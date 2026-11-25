@@ -2,6 +2,10 @@
 
 All times CST.
 
+## Docs — Nov 25, 2026, 1:25 PM
+- Incident report rev 1.9: HC-800 certificate patch routes (Control4 support Level 2 push; manual install on jailbroken units), patch failure troubleshooting, password-reset tip, and midday updates.
+- Guide rev 1.8: HC-800 patch route and root-access patch check.
+
 ## Docs — Nov 25, 2026, 1:10 PM
 - Incident report rev 1.8 and guide rev 1.7: GitHub link added to the first page and every footer so forwarded copies point back here.
 
