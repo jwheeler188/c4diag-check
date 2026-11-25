@@ -2,6 +2,10 @@
 
 All times CST.
 
+## Docs — Nov 25, 2026, 5:05 PM
+- Incident report rev 2.0: Control4's first official acknowledgement (dealer email) and ADI's statement to CE Pro; patch now reaching HC-800s; afternoon updates including a first report of a possibly armed EA-3.
+- Guide rev 1.9: no-root patch check in Composer Pro (System Info → Packages); armed-unit ping symptom.
+
 ## Docs — Nov 25, 2026, 1:25 PM
 - Incident report rev 1.9: HC-800 certificate patch routes (Control4 support Level 2 push; manual install on jailbroken units), patch failure troubleshooting, password-reset tip, and midday updates.
 - Guide rev 1.8: HC-800 patch route and root-access patch check.
