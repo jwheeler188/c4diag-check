@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# c4diag-run.sh  -  Mac / Linux launcher for the c4diagd check and evidence collection
+# Analyst: James Wheeler   Rev 1.1   November 25, 2026
+#
+# Keep c4diag-check.sh and c4diag-collect.sh in the same folder as this file.
+# Needs root SSH access to the controller.
+#
+#   bash c4diag-run.sh                          # menu
+#   bash c4diag-run.sh -i 192.168.1.50          # check only
+#   bash c4diag-run.sh -i 192.168.1.50,192.168.1.51 -c auto -o ~/Jobs/Smith
+#   bash c4diag-run.sh -i 192.168.1.50 -c always
+#   bash c4diag-run.sh -i 192.168.1.50 --collect-only
+#
+#   -i  controller IP(s), comma separated     -u  SSH user (default root)
+#   -c  none | auto | always (evidence)       -o  folder for reports (default: current)
+#   --collect-only  collect without printing the full check (check still runs first)
+#
+# The check always runs first. Evidence collection is skipped if the unit looks ARMED.
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+CHECK="$DIR/c4diag-check.sh"
+COLLECTSH="$DIR/c4diag-collect.sh"
+USER_NAME="root"; OUTDIR="$(pwd)"; COLLECT="none"; COLLECT_ONLY=0; IPS=""
+
+RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; CYN=$'\033[36m'; OFF=$'\033[0m'
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -i) IPS="$2"; shift 2 ;;
+    -u) USER_NAME="$2"; shift 2 ;;
+    -o) OUTDIR="$2"; shift 2 ;;
+    -c) COLLECT="$2"; shift 2 ;;
+    --collect-only) COLLECT_ONLY=1; shift ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+done
+
+if [ -z "$IPS" ]; then
+  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.0)${OFF}"
+  echo "Everything here is read-only on the controller. You need root SSH access."; echo
+  read -r -p "Controller IP address(es), separated by commas: " IPS
+  [ -z "$IPS" ] && { echo "${RED}No IP entered.${OFF}"; exit 1; }
+  echo; echo "What would you like to do?"
+  echo "  1) Check only (read-only report)"
+  echo "  2) Check, and collect evidence if an infection or past infection is found  [recommended]"
+  echo "  3) Check, and always collect evidence"
+  echo "  4) Collect evidence only (a quick check still runs first and stops if the unit looks armed)"
+  read -r -p "Choose 1-4 [2]: " CH
+  case "$CH" in 1) COLLECT=none ;; 3) COLLECT=always ;; 4) COLLECT=always; COLLECT_ONLY=1 ;; *) COLLECT=auto ;; esac
+  read -r -p "Folder for reports [$OUTDIR]: " O
+  [ -n "$O" ] && OUTDIR="${O/#\~/$HOME}"
+fi
+[ "$COLLECT_ONLY" = 1 ] && [ "$COLLECT" = none ] && COLLECT=always
+
+for f in "$CHECK" $( [ "$COLLECT" != none ] && echo "$COLLECTSH" ); do
+  [ -f "$f" ] || { echo "${RED}Cannot find $f. Keep all scripts in the same folder.${OFF}"; exit 1; }
+done
+command -v ssh >/dev/null && command -v scp >/dev/null || { echo "${RED}ssh/scp not found.${OFF}"; exit 1; }
+mkdir -p "$OUTDIR"
+
+if command -v sha256sum >/dev/null; then HASH="sha256sum"; else HASH="shasum -a 256"; fi
+# Copies with Unix line endings, in case the files were edited on Windows
+TMPD="$(mktemp -d)"
+# Reuse one SSH connection per controller so the password is asked only once
+SSHOPT="-o ConnectTimeout=10 -o ControlMaster=auto -o ControlPath=$TMPD/cm-%r@%h-%p -o ControlPersist=120"
+tr -d '\r' < "$CHECK" > "$TMPD/c4diag-check.sh"
+[ "$COLLECT" != none ] && tr -d '\r' < "$COLLECTSH" > "$TMPD/c4diag-collect.sh"
+
+SUMMARY=""
+IFS=', ' read -r -a LIST <<< "$IPS"
+for T in "${LIST[@]}"; do
+  [ -z "$T" ] && continue
+  STAMP="$(date +%Y-%m-%d_%H%M)"
+  REPORT="$OUTDIR/c4diag-$T-$STAMP.txt"
+  echo; echo "${CYN}=== $T ===${OFF}"
+
+  if ! scp -q $SSHOPT "$TMPD/c4diag-check.sh" "$USER_NAME@$T:/tmp/c4diag-check.sh"; then
+    echo "${RED}Could not copy the script to $T (check the IP, network and SSH access).${OFF}"
+    SUMMARY+="$T | NOT CHECKED (copy failed)"$'\n'; continue
+  fi
+  ssh $SSHOPT "$USER_NAME@$T" "sh /tmp/c4diag-check.sh; rm -f /tmp/c4diag-check.sh" > "$REPORT" 2>&1
+  [ "$COLLECT_ONLY" = 1 ] || cat "$REPORT"
+
+  RESULT="UNKNOWN (see report)"; COL="$YEL"
+  if   grep -q "ARMED / LOCKED INDICATORS FOUND" "$REPORT"; then RESULT="ARMED - do not reboot, escalate to Control4"; COL="$RED"
+  elif grep -q "INFECTED (staged)" "$REPORT"; then RESULT="INFECTED (staged)"; COL="$RED"
+  elif grep -q "PREVIOUSLY INFECTED, NOW CLEAN" "$REPORT"; then RESULT="PREVIOUSLY INFECTED, NOW CLEAN"; COL="$YEL"
+  elif grep -q "NO INDICATORS FOUND" "$REPORT"; then RESULT="NO INDICATORS FOUND"; COL="$GRN"; fi
+  echo; echo "Result for $T: ${COL}${RESULT}${OFF}"; echo "Saved to $REPORT"
+
+  EVID=""
+  DO=0
+  [ "$COLLECT" = always ] && DO=1
+  [ "$COLLECT" = auto ] && echo "$RESULT" | grep -q INFECTED && DO=1
+  if [ $DO = 1 ] && echo "$RESULT" | grep -q '^ARMED'; then
+    echo "${RED}Evidence collection skipped: the unit shows armed indicators. Leave it untouched and escalate to Control4.${OFF}"; DO=0
+  fi
+  if [ $DO = 1 ]; then
+    echo "${CYN}Collecting evidence from $T ...${OFF}"
+    scp -q $SSHOPT "$TMPD/c4diag-collect.sh" "$USER_NAME@$T:/tmp/c4diag-collect.sh"
+    OUT="$(ssh $SSHOPT "$USER_NAME@$T" "sh /tmp/c4diag-collect.sh; rm -f /tmp/c4diag-collect.sh" 2>&1)"
+    ARCH="$(echo "$OUT" | grep '^ARCHIVE=' | tail -1 | cut -d= -f2-)"
+    if [ -n "$ARCH" ] && scp -q $SSHOPT "$USER_NAME@$T:$ARCH" "$OUTDIR/"; then
+      LOCAL="$OUTDIR/$(basename "$ARCH")"
+      ssh $SSHOPT "$USER_NAME@$T" "rm -f $ARCH" >/dev/null 2>&1
+      { echo "$OUT" | grep -E '^[0-9a-f]{64} ' | sed 's/^/Controller-side hash: /'
+        echo "PC-side SHA-256:      $($HASH "$LOCAL" | cut -d' ' -f1)"; } > "$LOCAL.sha256.txt"
+      echo "${GRN}Evidence saved to $LOCAL${OFF}"
+      echo "Hashes recorded in $LOCAL.sha256.txt"
+      echo "${YEL}Do not extract or run this archive on your computer.${OFF}"
+      EVID="$LOCAL"
+    else
+      echo "${RED}Evidence collection failed. Output:${OFF}"; echo "$OUT"
+    fi
+  fi
+  SUMMARY+="$T | $RESULT | $REPORT${EVID:+ | $EVID}"$'\n'
+done
+
+for T in "${LIST[@]}"; do ssh -O exit -o ControlPath="$TMPD/cm-%r@%h-%p" "$USER_NAME@$T" >/dev/null 2>&1; done
+rm -rf "$TMPD"
+echo; echo "${CYN}=== Summary ===${OFF}"; printf '%s' "$SUMMARY"
