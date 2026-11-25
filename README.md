@@ -2,6 +2,12 @@
 
 Read-only toolkit to check a Control4 controller for the **c4diagd / c4hijack** remote-lock kit found in November 2026, or to confirm a controller was cleaned up. It can also collect an evidence archive for Control4.
 
+## 📄 Incident report (always current here)
+
+**[Control4 Controller Security Incident – c4diagd (PDF)](docs/Control4_c4diagd_Security_Incident.pdf)** – what happened, how they got in, indicators, Control4's response, and community/dealer reaction.
+
+Copies of this report have been circulating, and some contain guidance that has since been corrected (for example, earlier versions said to block `webhook.site`). **This repo always has the latest revision.** Check the revision number and "Last updated" time on the first page or in the page footer, and link here rather than reposting the file.
+
 > **Community tool, not official Control4 guidance.** Based on community analysis of affected units. Use only on systems you own or are authorized to service.
 
 ## 🧪 Windows testers wanted
@@ -25,6 +31,7 @@ Once a few native runs confirm it works, this notice will be removed.
 | `c4diag-check.sh` | The controller | Read-only check. Prints NO INDICATORS, PREVIOUSLY INFECTED, INFECTED or ARMED. |
 | `c4diag-collect.sh` | The controller | Gathers kit files, logs and settings into a hashed `.tar.gz` for Control4. |
 | `docs/Control4_c4diagd_Infection_Check_Guide.pdf` | You | Full guide, including checks that need no controller access. |
+| `docs/Control4_c4diagd_Security_Incident.pdf` | You | Incident report (latest revision). |
 
 **Keep all four scripts in the same folder.** The launchers only run on your computer; they copy the two controller scripts to the controller and run them there.
 

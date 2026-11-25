@@ -2,6 +2,9 @@
 
 All times CST.
 
+## Docs — Nov 25, 2026, 1:05 PM
+- Added the incident report (rev 1.7) to `docs/` so the latest revision is always in one place.
+
 ## 1.6 — Nov 25, 2026, 1:00 PM
 - Windows launcher 1.2 and Mac/Linux launcher 1.2: newer OpenSSH clients make `scp` use SFTP, which controllers like the HC-800 don't support ("subsystem request failed"). Launchers now detect this and use classic scp (`-O`). Contributed by CK.
 - Both launchers report a failed login clearly instead of saving an empty report, and stop cleanly if the collect script can't be copied.
