@@ -4,7 +4,8 @@
   and saves each report to a text file.
 
 .DESCRIPTION
-  Analyst: James Wheeler   Rev 1.1   November 25, 2026
+  Analyst: James Wheeler   Rev 1.2   November 25, 2026
+  HC-800 / newer OpenSSH fixes contributed by CK (Control4 DIY Discord).
   Requires the OpenSSH client built into Windows 10/11 (ssh and scp) and root SSH
   access to the controller. c4diag-check.sh must be in the same folder as this file.
   The check script only reads; this wrapper copies it to /tmp on the controller,
@@ -45,10 +46,16 @@ param(
 # Continue (not Stop): in Windows PowerShell 5.1, Stop turns ssh/scp warnings on stderr into fatal errors.
 $ErrorActionPreference = "Continue"
 
+# ssh/scp cannot read a typed password in PowerShell ISE
+if ($Host.Name -eq "Windows PowerShell ISE Host") {
+    Write-Host "Run this from a normal PowerShell or Windows Terminal window, not PowerShell ISE (ISE cannot take the SSH password)." -ForegroundColor Red
+    exit 1
+}
+
 # Interactive menu when no controller IP was given
 if (-not $Ip -or $Ip.Count -eq 0) {
     Write-Host ""
-    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.1)" -ForegroundColor Cyan
+    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.2)" -ForegroundColor Cyan
     Write-Host "Everything here is read-only on the controller. You need root SSH access."
     Write-Host ""
     $entry = Read-Host "Controller IP address(es), separated by commas"
@@ -103,20 +110,44 @@ if ($Collect -ne "None") { $lfCollect = New-LfCopy $CollectScript }
 $remote = "/tmp/c4diag-check.sh"
 $summary = @()
 
+# Each ssh/scp call is its own login, so the password is asked more than once.
+Write-Host ""
+if ($Collect -eq "None") {
+    Write-Host "You will be asked for the root password 2 times per controller (copy, then run)." -ForegroundColor Yellow
+} else {
+    Write-Host "You will be asked for the root password 2 times per controller, plus 4 more if evidence is collected." -ForegroundColor Yellow
+}
+Write-Host "A new prompt after a step is normal. A wrong password shows 'Permission denied, please try again.'" -ForegroundColor Yellow
+function Show-Step([string]$Text) { Write-Host "  -> $Text" -ForegroundColor DarkCyan }
+
+# Newer OpenSSH makes scp use SFTP by default, which controllers do not have
+# ("subsystem request failed"). -O switches back to the classic scp protocol when supported.
+$scpOpts = @("-q", "-o", "ConnectTimeout=10")
+$scpUsage = (& scp 2>&1 | Out-String)
+if ($scpUsage -match "\[-[0-9A-Za-z]*O[0-9A-Za-z]*\]") { $scpOpts += "-O" }
+
 foreach ($target in $Ip) {
     $stamp = Get-Date -Format "yyyy-MM-dd_HHmm"
     $report = Join-Path $OutDir ("c4diag-{0}-{1}.txt" -f $target, $stamp)
     Write-Host ""
     Write-Host "=== $target ===" -ForegroundColor Cyan
 
-    & scp -q -o ConnectTimeout=10 $lfCopy "${User}@${target}:$remote"
+    Show-Step "Login 1 of 2: copying the check script"
+    & scp @scpOpts $lfCopy "${User}@${target}:$remote"
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Could not copy the script to $target (check the IP, network and SSH access)." -ForegroundColor Red
+        Write-Host "Could not copy the script to $target (check the IP, network, password and SSH access)." -ForegroundColor Red
         $summary += [pscustomobject]@{ Controller = $target; Result = "NOT CHECKED (copy failed)"; Report = ""; Evidence = "" }
         continue
     }
 
+    Show-Step "Login 2 of 2: running the check"
     $output = & ssh -o ConnectTimeout=10 "${User}@${target}" "sh $remote; rm -f $remote" 2>&1 | ForEach-Object { "$_" }
+    if ($LASTEXITCODE -eq 255) {
+        $output | ForEach-Object { Write-Host $_ }
+        Write-Host "Could not log in to $target to run the check. The copy in $remote was left on the controller." -ForegroundColor Red
+        $summary += [pscustomobject]@{ Controller = $target; Result = "NOT CHECKED (login failed)"; Report = ""; Evidence = "" }
+        continue
+    }
     $output | Out-File -FilePath $report -Encoding utf8
     if (-not $CollectOnly) { $output | ForEach-Object { Write-Host $_ } }
 
@@ -140,14 +171,23 @@ foreach ($target in $Ip) {
     }
     if ($doCollect) {
         Write-Host "Collecting evidence from $target ..." -ForegroundColor Cyan
-        & scp -q -o ConnectTimeout=10 $lfCollect "${User}@${target}:/tmp/c4diag-collect.sh"
+        Show-Step "Evidence login 1 of 4: copying the collect script"
+        & scp @scpOpts $lfCollect "${User}@${target}:/tmp/c4diag-collect.sh"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Could not copy the collect script to $target. No evidence collected." -ForegroundColor Red
+            $summary += [pscustomobject]@{ Controller = $target; Result = $result; Report = $report; Evidence = "" }
+            continue
+        }
+        Show-Step "Evidence login 2 of 4: running the collection"
         $col = & ssh -o ConnectTimeout=10 "${User}@${target}" "sh /tmp/c4diag-collect.sh; rm -f /tmp/c4diag-collect.sh" 2>&1 | ForEach-Object { "$_" }
         $line = $col | Where-Object { $_ -like "ARCHIVE=*" } | Select-Object -Last 1
         if ($line) {
             $remoteArchive = $line.Substring(8).Trim()
             $local = Join-Path $OutDir ([System.IO.Path]::GetFileName($remoteArchive))
-            & scp -q -o ConnectTimeout=10 "${User}@${target}:$remoteArchive" $local
+            Show-Step "Evidence login 3 of 4: downloading the archive"
+            & scp @scpOpts "${User}@${target}:$remoteArchive" $local
             if ($LASTEXITCODE -eq 0 -and (Test-Path $local)) {
+                Show-Step "Evidence login 4 of 4: removing the archive from the controller"
                 & ssh -o ConnectTimeout=10 "${User}@${target}" "rm -f $remoteArchive" | Out-Null
                 $hash = (Get-FileHash $local -Algorithm SHA256).Hash.ToLower()
                 $col | Where-Object { $_ -match "^[0-9a-f]{64}\s" } | ForEach-Object { "Controller-side hash: $_" } | Out-File -FilePath "$local.sha256.txt" -Encoding utf8

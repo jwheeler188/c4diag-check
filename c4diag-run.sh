@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # c4diag-run.sh  -  Mac / Linux launcher for the c4diagd check and evidence collection
-# Analyst: James Wheeler   Rev 1.1   November 25, 2026
+# Analyst: James Wheeler   Rev 1.2  (scp -O fix for newer OpenSSH, thanks to CK)   November 25, 2026
 #
 # Keep c4diag-check.sh and c4diag-collect.sh in the same folder as this file.
 # Needs root SSH access to the controller.
@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$IPS" ]; then
-  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.0)${OFF}"
+  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.2)${OFF}"
   echo "Everything here is read-only on the controller. You need root SSH access."; echo
   read -r -p "Controller IP address(es), separated by commas: " IPS
   [ -z "$IPS" ] && { echo "${RED}No IP entered.${OFF}"; exit 1; }
@@ -64,6 +64,10 @@ if command -v sha256sum >/dev/null; then HASH="sha256sum"; else HASH="shasum -a 
 TMPD="$(mktemp -d)"
 # Reuse one SSH connection per controller so the password is asked only once
 SSHOPT="-o ConnectTimeout=10 -o ControlMaster=auto -o ControlPath=$TMPD/cm-%r@%h-%p -o ControlPersist=120"
+# Newer OpenSSH (macOS 13+, most current Linux) makes scp use SFTP, which controllers
+# do not have ("subsystem request failed"). -O switches back to classic scp if supported.
+SCPOPT="$SSHOPT"
+scp 2>&1 | grep -q -- '\[-[0-9A-Za-z]*O[0-9A-Za-z]*\]' && SCPOPT="$SCPOPT -O"
 tr -d '\r' < "$CHECK" > "$TMPD/c4diag-check.sh"
 [ "$COLLECT" != none ] && tr -d '\r' < "$COLLECTSH" > "$TMPD/c4diag-collect.sh"
 
@@ -75,11 +79,16 @@ for T in "${LIST[@]}"; do
   REPORT="$OUTDIR/c4diag-$T-$STAMP.txt"
   echo; echo "${CYN}=== $T ===${OFF}"
 
-  if ! scp -q $SSHOPT "$TMPD/c4diag-check.sh" "$USER_NAME@$T:/tmp/c4diag-check.sh"; then
+  if ! scp -q $SCPOPT "$TMPD/c4diag-check.sh" "$USER_NAME@$T:/tmp/c4diag-check.sh"; then
     echo "${RED}Could not copy the script to $T (check the IP, network and SSH access).${OFF}"
     SUMMARY+="$T | NOT CHECKED (copy failed)"$'\n'; continue
   fi
   ssh $SSHOPT "$USER_NAME@$T" "sh /tmp/c4diag-check.sh; rm -f /tmp/c4diag-check.sh" > "$REPORT" 2>&1
+  if [ $? -eq 255 ]; then
+    cat "$REPORT"; rm -f "$REPORT"
+    echo "${RED}Could not log in to $T to run the check. The copy in /tmp was left on the controller.${OFF}"
+    SUMMARY+="$T | NOT CHECKED (login failed)"$'\n'; continue
+  fi
   [ "$COLLECT_ONLY" = 1 ] || cat "$REPORT"
 
   RESULT="UNKNOWN (see report)"; COL="$YEL"
@@ -98,10 +107,13 @@ for T in "${LIST[@]}"; do
   fi
   if [ $DO = 1 ]; then
     echo "${CYN}Collecting evidence from $T ...${OFF}"
-    scp -q $SSHOPT "$TMPD/c4diag-collect.sh" "$USER_NAME@$T:/tmp/c4diag-collect.sh"
+    if ! scp -q $SCPOPT "$TMPD/c4diag-collect.sh" "$USER_NAME@$T:/tmp/c4diag-collect.sh"; then
+      echo "${RED}Could not copy the collect script to $T. No evidence collected.${OFF}"
+      SUMMARY+="$T | $RESULT | $REPORT"$'\n'; continue
+    fi
     OUT="$(ssh $SSHOPT "$USER_NAME@$T" "sh /tmp/c4diag-collect.sh; rm -f /tmp/c4diag-collect.sh" 2>&1)"
     ARCH="$(echo "$OUT" | grep '^ARCHIVE=' | tail -1 | cut -d= -f2-)"
-    if [ -n "$ARCH" ] && scp -q $SSHOPT "$USER_NAME@$T:$ARCH" "$OUTDIR/"; then
+    if [ -n "$ARCH" ] && scp -q $SCPOPT "$USER_NAME@$T:$ARCH" "$OUTDIR/"; then
       LOCAL="$OUTDIR/$(basename "$ARCH")"
       ssh $SSHOPT "$USER_NAME@$T" "rm -f $ARCH" >/dev/null 2>&1
       { echo "$OUT" | grep -E '^[0-9a-f]{64} ' | sed 's/^/Controller-side hash: /'

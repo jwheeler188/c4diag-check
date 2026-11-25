@@ -1,6 +1,6 @@
 #!/bin/sh
 # c4diag-collect.sh  -  gather c4diagd / c4hijack evidence into one archive for Control4
-# Analyst: James Wheeler   Rev 1.1   November 25, 2026
+# Analyst: James Wheeler   Rev 1.2   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-collect.sh
 # Only READS from the system. It writes a working folder and a .tar.gz under /tmp
@@ -81,7 +81,7 @@ run systemctl-c4diagd sh -c 'systemctl status c4diagd 2>&1; systemctl list-unit-
 run sysman sh -c 'sysman list 2>/dev/null || ls /etc/sysman.d'
 run c4diag-log-lines sh -c 'for f in /var/log/daemon.log* /var/log/messages*; do [ -f "$f" ] || continue; case "$f" in *.gz) zcat "$f";; *) cat "$f";; esac; done 2>/dev/null | grep -i c4diag'
 run usr-local-bin sh -c 'ls -la /usr/local/bin; ls -la /opt'
-run recent-changes sh -c 'touch -d 2026-11-15 /tmp/.c4col_ref && find /etc /usr/local /opt /root -xdev -type f -newer /tmp/.c4col_ref -exec ls -la {} \; ; rm -f /tmp/.c4col_ref'
+run recent-changes sh -c 'touch -d 2026-11-15 /tmp/.c4col_ref && find /etc /usr/local /opt /root -xdev -type f -newer /tmp/.c4col_ref 2>/dev/null | head -2000; rm -f /tmp/.c4col_ref'
 run api-cert sh -c 'for c in /opt/control4/etc/ssl/certs/api.pem /etc/openvpn/api.pem; do [ -e "$c" ] && openssl x509 -in "$c" -noout -subject -issuer -dates; done'
 
 # Manifest with hashes
@@ -89,7 +89,7 @@ run api-cert sh -c 'for c in /opt/control4/etc/ssl/certs/api.pem /etc/openvpn/ap
   echo "c4diagd evidence archive"
   echo "Host:      $H"
   echo "Collected: $TS (UTC)"
-  echo "Collector: c4diag-collect.sh rev 1.1"
+  echo "Collector: c4diag-collect.sh rev 1.2"
   echo "WARNING:   files/usr/local/bin/c4diagd (if present) is live malware. Do not run it."
   echo
   echo "SHA-256 of collected files:"

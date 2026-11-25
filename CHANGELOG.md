@@ -2,6 +2,13 @@
 
 All times CST.
 
+## 1.6 — Nov 25, 2026, 1:00 PM
+- Windows launcher 1.2 and Mac/Linux launcher 1.2: newer OpenSSH clients make `scp` use SFTP, which controllers like the HC-800 don't support ("subsystem request failed"). Launchers now detect this and use classic scp (`-O`). Contributed by CK.
+- Both launchers report a failed login clearly instead of saving an empty report, and stop cleanly if the collect script can't be copied.
+- Windows launcher: refuses to run in PowerShell ISE (it can't take the SSH password) and labels each password prompt.
+- Collector 1.2: recent-changes listing no longer runs `ls` per file (could take minutes after a large update).
+- First confirmed Windows run (HC-800).
+
 ## 1.5 — Nov 25, 2026, 9:10 AM
 - Check script 1.2: no longer counts Control4's "Maintain - c4diagd" cleanup log lines as infection (it ran on every controller, so nearly every unit looked infected).
 - Check: no longer flags stock commented-out getty lines in `/etc/inittab` as armed.

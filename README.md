@@ -6,7 +6,7 @@ Read-only toolkit to check a Control4 controller for the **c4diagd / c4hijack** 
 
 ## 🧪 Windows testers wanted
 
-The Windows launcher (`c4diag-check.ps1`) has **not yet been run on a real Windows PC**. It has only been written and reviewed; development and testing so far were on Mac and Linux, and Windows under Parallels doesn't count as a native test.
+The Windows launcher (`c4diag-check.ps1`) has had **one confirmed real-world run** so far (against an HC-800, by CK, who also contributed fixes in rev 1.2). More native Windows runs are needed across controller models and OS versions; Windows under Parallels or other VMs doesn't count as a native test.
 
 If you can run it on a **native Windows 10 or 11 machine** (not a VM) against a controller you have root SSH on:
 
@@ -76,6 +76,7 @@ See section 6.4 of the guide: log retention, other kit builds, recovery partitio
 
 - Control4 DIY Unofficial Discord community for the original discovery and analysis.
 - **TripleC** for spotting the masked-service false positive.
+- **CK** for the HC-800 / newer OpenSSH scp fix and Windows launcher improvements.
 
 Analyst / maintainer: James Wheeler
 
