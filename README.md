@@ -95,7 +95,7 @@ See section 6.4 of the guide: log retention, other kit builds, recovery partitio
 - Control4 DIY Unofficial Discord community for the original discovery and analysis.
 - **TripleC** for spotting the masked-service false positive.
 - **CK** for the HC-800 / newer OpenSSH scp fix and Windows launcher improvements.
-- A community member (EA-5, OS 3.4.3) for the detailed field report behind rev 1.3: key-only SSH, `/var/log/debug`, `/home/root`, stale sshd and BusyBox issues.
+- **muroglio** for the detailed EA-5 (OS 3.4.3) field report behind rev 1.3: key-only SSH, `/var/log/debug`, `/home/root`, stale sshd and BusyBox issues.
 
 Analyst / maintainer: James Wheeler
 

@@ -3,7 +3,7 @@
 All times CST.
 
 ## 1.7 — Nov 25, 2026, 5:50 PM
-Fixes from a field report on an EA-5 (OS 3.4.3) that rev 1.2 wrongly reported as **NO INDICATORS FOUND**, although it was staged on Nov 22 and cleaned by Control4 on Nov 23.
+Fixes from a field report by muroglio on an EA-5 (OS 3.4.3) that rev 1.2 wrongly reported as **NO INDICATORS FOUND**, although it was staged on Nov 22 and cleaned by Control4 on Nov 23.
 - Check 1.3 and collector 1.3: search all of `/var/log`, including `/var/log/debug/` (where OS 3.4.x keeps its logs), instead of only `/var/log/*`.
 - Root's home is read from `/etc/passwd`; `/home/root/.ssh/authorized_keys` is now checked and collected.
 - Root password logins from 127.0.0.1 (the Remote Access relay) are counted as past-infection evidence.
