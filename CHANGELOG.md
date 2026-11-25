@@ -2,8 +2,11 @@
 
 All times CST.
 
+## Docs — Nov 25, 2026, 1:10 PM
+- Incident report rev 1.8 and guide rev 1.7: GitHub link added to the first page and every footer so forwarded copies point back here.
+
 ## Docs — Nov 25, 2026, 1:05 PM
-- Added the incident report (rev 1.7) to `docs/` so the latest revision is always in one place.
+- Added the incident report to `docs/` so the latest revision is always in one place.
 
 ## 1.6 — Nov 25, 2026, 1:00 PM
 - Windows launcher 1.2 and Mac/Linux launcher 1.2: newer OpenSSH clients make `scp` use SFTP, which controllers like the HC-800 don't support ("subsystem request failed"). Launchers now detect this and use classic scp (`-O`). Contributed by CK.
