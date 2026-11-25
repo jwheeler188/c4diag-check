@@ -28,7 +28,7 @@ Once a few native runs confirm it works, this notice will be removed.
 |---|---|---|
 | `c4diag-check.ps1` | Your Windows PC | Launcher with menu. Copies the controller scripts over SSH, runs them, saves reports. |
 | `c4diag-run.sh` | Your Mac / Linux machine | Same launcher for Mac and Linux. |
-| `c4diag-check.sh` | The controller | Read-only check. Prints NO INDICATORS, PREVIOUSLY INFECTED, INFECTED or ARMED. |
+| `c4diag-check.sh` | The controller | Read-only check. Prints NO INDICATORS, POSSIBLE PAST INFECTION, PREVIOUSLY INFECTED, INFECTED or ARMED. |
 | `c4diag-collect.sh` | The controller | Gathers kit files, logs and settings into a hashed `.tar.gz` for Control4. |
 | `docs/Control4_c4diagd_Infection_Check_Guide.pdf` | You | Full guide, including checks that need no controller access. |
 | `docs/Control4_c4diagd_Security_Incident.pdf` | You | Incident report (latest revision). |
@@ -59,6 +59,17 @@ Both show a menu:
 3. Check, and always collect evidence
 4. Collect evidence only
 
+The menu also asks for an SSH key file; leave it blank to log in with a password. For key-only controllers:
+
+```powershell
+.\c4diag-check.ps1 -Ip 192.168.1.50 -IdentityFile $HOME\.ssh\c4_ed25519
+```
+```bash
+bash c4diag-run.sh -i 192.168.1.50 -k ~/.ssh/c4_ed25519
+```
+
+Before logging in, both launchers ask the controller's running SSH server which login methods it offers (no password is sent). If password login is offered, the report says **PASSWORD LOGIN IS LIVE**: the attacker turned it on, and a running sshd keeps it until it is restarted, even after `sshd_config` is fixed.
+
 Command-line options are in the guide and at the top of each launcher.
 
 ## Safety
@@ -84,6 +95,7 @@ See section 6.4 of the guide: log retention, other kit builds, recovery partitio
 - Control4 DIY Unofficial Discord community for the original discovery and analysis.
 - **TripleC** for spotting the masked-service false positive.
 - **CK** for the HC-800 / newer OpenSSH scp fix and Windows launcher improvements.
+- A community member (EA-5, OS 3.4.3) for the detailed field report behind rev 1.3: key-only SSH, `/var/log/debug`, `/home/root`, stale sshd and BusyBox issues.
 
 Analyst / maintainer: James Wheeler
 

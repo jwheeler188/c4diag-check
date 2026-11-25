@@ -2,6 +2,19 @@
 
 All times CST.
 
+## 1.7 — Nov 25, 2026, 5:50 PM
+Fixes from a field report on an EA-5 (OS 3.4.3) that rev 1.2 wrongly reported as **NO INDICATORS FOUND**, although it was staged on Nov 22 and cleaned by Control4 on Nov 23.
+- Check 1.3 and collector 1.3: search all of `/var/log`, including `/var/log/debug/` (where OS 3.4.x keeps its logs), instead of only `/var/log/*`.
+- Root's home is read from `/etc/passwd`; `/home/root/.ssh/authorized_keys` is now checked and collected.
+- Root password logins from 127.0.0.1 (the Remote Access relay) are counted as past-infection evidence.
+- Reports the times of `/usr/local`, `/usr/local/bin` and `/opt`. A change during Nov 19–24 with no other evidence gives a new result, **POSSIBLE PAST INFECTION (timestamps only)**, since an OS update that week can also cause it.
+- Warns when `sshd_config` changed after sshd started (the running sshd may still accept passwords).
+- "Files changed since Nov 15" uses `find -mtime` (BusyBox `touch -d` failed, so the list was empty). Patch check uses `dpkg -l` directly (`command -v dpkg` failed although dpkg works).
+- The kit process is matched by exact name, so a command line that only mentions c4diagd no longer counts.
+- Windows launcher 1.3 (`-IdentityFile`) and Mac/Linux launcher 1.3 (`-k`): log in with a private key for key-only controllers; the menu asks for it too.
+- Both launchers test the running sshd from outside (`PreferredAuthentications=none`, no password sent) and flag **PASSWORD LOGIN IS LIVE**.
+- Guide rev 2.0 updated to match.
+
 ## Docs — Nov 25, 2026, 5:05 PM
 - Incident report rev 2.0: Control4's first official acknowledgement (dealer email) and ADI's statement to CE Pro; patch now reaching HC-800s; afternoon updates including a first report of a possibly armed EA-3.
 - Guide rev 1.9: no-root patch check in Composer Pro (System Info → Packages); armed-unit ping symptom.

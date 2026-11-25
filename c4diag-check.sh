@@ -1,15 +1,27 @@
 #!/bin/sh
 # c4diag-check.sh  -  READ-ONLY check for the c4diagd / c4hijack kit on a Control4 controller
-# Analyst: James Wheeler   Rev 1.2   November 25, 2026
+# Analyst: James Wheeler   Rev 1.3 (EA-5 / OS 3.4.3 fixes from a community field report)   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-check.sh | tee /tmp/c4diag-check.txt
 # This script only reads. It does not stop, delete or change anything.
 # If it reports ARMED, stop and escalate to Control4. Do not reboot or kill processes.
 
-echo "=== c4diag check rev 1.2  $(date)  host: $(hostname) ==="
-FOUND=0; ARMED=0; CLEANED=0
+echo "=== c4diag check rev 1.3  $(date)  host: $(hostname) ==="
+FOUND=0; ARMED=0; CLEANED=0; TIMEHINT=0
 
 say() { printf '%-48s %s\n' "$1" "$2"; }
+NOW=$(date +%s)
+REF_EPOCH=1794700800     # 2026-11-15 00:00 UTC (look-back start for changed files)
+WIN_START=1795046400     # 2026-11-19 00:00 UTC (earliest known install)
+WIN_END=1795564800       # 2026-11-25 00:00 UTC
+DAYS=$(( (NOW - REF_EPOCH) / 86400 + 1 ))
+mtime() { stat -c %Y "$1" 2>/dev/null || date -r "$1" +%s 2>/dev/null; }
+fmt() { date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "$1"; }
+# Log files: some OS versions keep them under /var/log/debug/
+LOGFILES=$(find /var/log -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null)
+readlogs() { for f in $LOGFILES; do case "$f" in *.gz) zcat "$f" 2>/dev/null ;; *) cat "$f" 2>/dev/null ;; esac; done; }
+# Root's home is /home/root on some OS versions
+ROOTHOME=$(awk -F: '$1=="root"{print $6}' /etc/passwd 2>/dev/null); [ -z "$ROOTHOME" ] && ROOTHOME=/root
 
 # 1. Kit files
 # A unit file that is a link to /dev/null means c4diagd was MASKED (neutralised by
@@ -54,7 +66,10 @@ if [ -f /etc/inittab ] && grep -q getty /etc/inittab && ! grep -q '^[^#].*getty'
 fi
 
 # 3. Running process / network
-if ps 2>/dev/null | grep -v grep | grep -q c4diagd || ps aux 2>/dev/null | grep -v grep | grep -q c4diagd; then
+# Match the process NAME exactly (a command line merely mentioning c4diagd must not count)
+kitproc() { pidof c4diagd >/dev/null 2>&1 && return 0
+  for p in /proc/[0-9]*; do [ "$(cat "$p/comm" 2>/dev/null)" = c4diagd ] && return 0; done; return 1; }
+if kitproc; then
   say "c4diagd process" "RUNNING  <-- infection"; FOUND=1
 else
   say "c4diagd process" "not running"
@@ -85,31 +100,64 @@ fi
 
 # 5. Signs of attacker access
 if grep -qi '^PasswordAuthentication[[:space:]]*yes' /etc/ssh/sshd_config 2>/dev/null; then
-  say "sshd PasswordAuthentication" "YES  <-- review (attacker enabled this)"
-else say "sshd PasswordAuthentication" "not enabled"; fi
+  say "sshd_config PasswordAuthentication" "YES  <-- review (attacker enabled this)"
+else say "sshd_config PasswordAuthentication" "not enabled in the file"; fi
+# The running sshd keeps the settings it started with. If the file changed after sshd
+# started, password login may still be accepted. (The launchers also test this from outside.)
+SSHD_PID=$(pidof sshd 2>/dev/null | tr ' ' '\n' | sort -n | head -1)
+if [ -n "$SSHD_PID" ] && [ -f /etc/ssh/sshd_config ]; then
+  BTIME=$(awk '/^btime/{print $2}' /proc/stat); HZ=$(getconf CLK_TCK 2>/dev/null || echo 100)
+  ST=$(awk '{print $22}' /proc/$SSHD_PID/stat 2>/dev/null)
+  if [ -n "$ST" ] && [ -n "$BTIME" ]; then
+    SSHD_START=$(( BTIME + ST / HZ )); CFG=$(mtime /etc/ssh/sshd_config)
+    say "sshd started" "$(fmt $SSHD_START)"; say "sshd_config last changed" "$(fmt $CFG)"
+    [ -n "$CFG" ] && [ "$CFG" -gt "$SSHD_START" ] && say "  running sshd" "STARTED BEFORE CONFIG CHANGE  <-- may still accept passwords; restart sshd"
+  fi
+fi
 for k in /etc/ssh/ssh_c4_ca.pub /etc/ssh/root_principals /etc/ssh/revoked-keys.krl; do
   [ -e "$k" ] && say "$k" "present (good)" || say "$k" "missing (armed kit deletes it; may be normal on older OS)"
 done
-echo "--- /root/.ssh/authorized_keys (review for unknown keys) ---"
-cat /root/.ssh/authorized_keys 2>/dev/null || echo "(none)"
+for K in "$ROOTHOME/.ssh/authorized_keys" /root/.ssh/authorized_keys /home/root/.ssh/authorized_keys; do
+  [ -f "$K" ] || continue
+  case " $SEENK " in *" $K "*) continue;; esac; SEENK="$SEENK $K"
+  echo "--- $K (review for unknown keys; modified $(fmt "$(mtime "$K")")) ---"; cat "$K"
+done
+[ -z "$SEENK" ] && echo "--- no root authorized_keys file found (home: $ROOTHOME) ---"
 
 # 6. Evidence in logs (past infection, even after removal)
 # Count only lines written BY the c4diagd program, not Control4's "Maintain - c4diagd"
 # cleanup script, which ran on every controller.
-LOGHITS=$( { for f in /var/log/daemon.log* /var/log/messages*; do
-               [ -f "$f" ] || continue
-               case "$f" in *.gz) zcat "$f" 2>/dev/null ;; *) cat "$f" ;; esac
-             done; } | grep -E 'c4diagd\[[0-9]+\]|\[c4diagd [0-9]|c4diagd starting|NOT ARMED' | grep -vi maintain | wc -l)
+if [ -z "$LOGFILES" ]; then say "Log files found under /var/log" "none"; else say "Log files found under /var/log" "$(echo $LOGFILES | wc -w)"; fi
+LOGHITS=$(readlogs | grep -E 'c4diagd\[[0-9]+\]|\[c4diagd [0-9]|c4diagd starting|NOT ARMED' | grep -vi maintain | wc -l)
 LOGHITS=$(echo $LOGHITS)
 say "Log lines written by c4diagd" "${LOGHITS:-0}"
 [ "${LOGHITS:-0}" -gt 0 ] && CLEANED=1
-OLDEST=$(ls -tr /var/log/daemon.log* /var/log/messages* 2>/dev/null | head -1)
-[ -n "$OLDEST" ] && say "Oldest log file kept" "$(ls -l "$OLDEST" | awk '{print $6, $7, $8}') (no evidence before this date)"
+# Root password logins arriving through the Remote Access relay show as from 127.0.0.1
+RELAYPW=$(readlogs | grep -iE 'Accepted password for root from 127\.0\.0\.1' | wc -l); RELAYPW=$(echo $RELAYPW)
+say "Root PASSWORD logins from 127.0.0.1" "${RELAYPW:-0}"
+if [ "${RELAYPW:-0}" -gt 0 ]; then
+  CLEANED=1; echo "  (relay-tunnelled password logins match the attack pattern; first/last:)"
+  readlogs | grep -iE 'Accepted password for root from 127\.0\.0\.1' | sed -n '1p;$p'
+fi
+OLDEST=$(for f in $LOGFILES; do echo "$(mtime "$f") $f"; done | sort -n | head -1 | cut -d' ' -f2-)
+[ -n "$OLDEST" ] && say "Oldest log file kept" "$(fmt "$(mtime "$OLDEST")") (no log evidence before this)"
+
+# 6b. Directory timestamps. The kit installed into /usr/local and the Control4 cleanup
+# (Nov 23 ~06:30 UTC) removed files from /usr/local/bin and /opt, changing their times.
+# OS updates and other installs also change these, so on their own they are only a hint.
+for D in /usr/local /usr/local/bin /opt /opt/.c4diag; do
+  [ -e "$D" ] || continue; T=$(mtime "$D"); [ -z "$T" ] && continue
+  if [ "$T" -ge "$WIN_START" ] && [ "$T" -lt "$WIN_END" ]; then
+    say "$D modified" "$(fmt $T)  <-- inside Nov 19-24 window"
+    case "$D" in /usr/local|/usr/local/bin) TIMEHINT=1 ;; esac
+  else say "$D modified" "$(fmt $T)"; fi
+done
 
 # 7. Control4 cleanup and certificate patch
 if [ -f /mnt/internal/rms_maint.log ]; then say "rms_maint.log" "$(tail -1 /mnt/internal/rms_maint.log)"; else say "rms_maint.log" "not present (removed by later cleanup or never ran)"; fi
-if ! command -v dpkg >/dev/null 2>&1; then say "patch-replace-cert package" "unknown (no dpkg; check Toolbox)"
-elif dpkg -l 2>/dev/null | grep -q patch-replace-cert; then say "patch-replace-cert package" "INSTALLED"
+DPKGL=$(dpkg -l 2>/dev/null)
+if [ -z "$DPKGL" ]; then say "patch-replace-cert package" "unknown (dpkg not usable; check Composer System Info)"
+elif echo "$DPKGL" | grep -q patch-replace-cert; then say "patch-replace-cert package" "INSTALLED"
 else say "patch-replace-cert package" "not installed"; fi
 for c in /opt/control4/etc/ssl/certs/api.pem /etc/openvpn/api.pem; do
   [ -e "$c" ] && say "api.pem issuer" "$(openssl x509 -in "$c" -noout -issuer 2>/dev/null | sed 's/.*CN *= *//')" && break
@@ -121,10 +169,8 @@ echo "--- For review (other kit builds may use different names) ---"
 echo "Files in /usr/local/bin:"; ls -la /usr/local/bin 2>/dev/null
 echo "Hidden folders in /opt:"; ls -a /opt 2>/dev/null | grep '^\.[^.]'
 echo "Non-standard inittab respawn lines:"; grep respawn /etc/inittab 2>/dev/null | grep -v -E 'getty|^#'
-echo "Files changed since Nov 15, 2026 in /etc /usr/local /opt /root:"
-touch -d '2026-11-15' /tmp/.c4chk_ref 2>/dev/null && \
-  find /etc /usr/local /opt /root -xdev -type f -newer /tmp/.c4chk_ref 2>/dev/null | grep -v -E '^/opt/control4/.*\.(db|log)$' | head -60
-rm -f /tmp/.c4chk_ref
+echo "Files changed since Nov 15, 2026 in /etc /usr/local /opt /root /home/root:"
+find /etc /usr/local /opt /root /home/root -xdev -type f -mtime -$DAYS 2>/dev/null | grep -v -E '^/opt/control4/.*\.(db|log)$' | head -60
 
 echo
 echo "=== RESULT ==="
@@ -133,7 +179,9 @@ if [ $ARMED -eq 1 ]; then
 elif [ $FOUND -eq 1 ]; then
   echo "INFECTED (staged). Copy evidence off, then remove per the guide or request Control4 cleanup."
 elif [ $CLEANED -eq 1 ]; then
-  echo "PREVIOUSLY INFECTED, NOW CLEAN. Kit removed or masked, but traces show it was here. Review access and keep the logs."
+  echo "PREVIOUSLY INFECTED, NOW CLEAN. Kit removed or masked, but traces show it was here (logs, relay logins or directory times above). Review access and keep the logs."
+elif [ $TIMEHINT -eq 1 ]; then
+  echo "POSSIBLE PAST INFECTION (timestamps only). /usr/local changed during Nov 19-24, matching kit install/cleanup times, but no log evidence. An OS update that week can also cause this. Confirm with firewall logs or a controller snapshot."
 else
   echo "NO INDICATORS FOUND. (Logs only go back to the oldest log date above; also check firewall logs.)"
 fi
