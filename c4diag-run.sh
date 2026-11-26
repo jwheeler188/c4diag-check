@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # c4diag-run.sh  -  Mac / Linux launcher for the c4diagd check and evidence collection
-# Analyst: James Wheeler   Rev 1.5  (key folder support, per-controller key test, first-use host keys accepted)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.6  (clearer message when no saved key matches a controller)   November 25, 2026
 #
 # Keep c4diag-check.sh and c4diag-collect.sh in the same folder as this file.
 # Needs root SSH access to the controller.
@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$IPS" ]; then
-  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.5)${OFF}"
+  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.6)${OFF}"
   echo "Everything here is read-only on the controller. You need root SSH access."; echo
   read -r -p "Controller IP address(es), separated by commas: " IPS
   [ -z "$IPS" ] && { echo "${RED}No IP entered.${OFF}"; exit 1; }
@@ -122,6 +122,8 @@ for T in "${LIST[@]}"; do
     done
     if [ -z "$CHOSEN" ]; then
       echo "${RED}None of the keys under $KEYFILE were accepted by $T.${OFF}"; [ -n "$LASTERR" ] && echo "ssh said: $LASTERR"
+      echo "Key folders tried: $(for D in "${KEYDIRS[@]}"; do basename "$D"; done | tr '\n' ' ')"
+      echo "${YEL}Each sub-folder is one controller (named by MAC). If this controller's MAC isn't there, run the Jailbreak tool's 'SSH Access' mode on it first.${OFF}"
       SUMMARY+="$T | NOT CHECKED (no key accepted)"$'\n'; continue
     fi
     echo "Key accepted: $CHOSEN"

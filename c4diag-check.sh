@@ -1,12 +1,12 @@
 #!/bin/sh
 # c4diag-check.sh  -  READ-ONLY check for the c4diagd / c4hijack kit on a Control4 controller
-# Analyst: James Wheeler   Rev 1.3 (EA-5 / OS 3.4.3 fixes from a community field report)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.4 (adds systemd journal and /mnt/internal log search)   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-check.sh | tee /tmp/c4diag-check.txt
 # This script only reads. It does not stop, delete or change anything.
 # If it reports ARMED, stop and escalate to Control4. Do not reboot or kill processes.
 
-echo "=== c4diag check rev 1.3  $(date)  host: $(hostname) ==="
+echo "=== c4diag check rev 1.4  $(date)  host: $(hostname) ==="
 FOUND=0; ARMED=0; CLEANED=0; TIMEHINT=0
 
 say() { printf '%-48s %s\n' "$1" "$2"; }
@@ -18,8 +18,12 @@ DAYS=$(( (NOW - REF_EPOCH) / 86400 + 1 ))
 mtime() { stat -c %Y "$1" 2>/dev/null || date -r "$1" +%s 2>/dev/null; }
 fmt() { date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "$1"; }
 # Log files: some OS versions keep them under /var/log/debug/
-LOGFILES=$(find /var/log -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null)
-readlogs() { for f in $LOGFILES; do case "$f" in *.gz) zcat "$f" 2>/dev/null ;; *) cat "$f" 2>/dev/null ;; esac; done; }
+# Log files: /var/log (OS 3.4.x uses /var/log/debug/), plus persistent logs under /mnt/internal
+LOGFILES=$(find /var/log /mnt/internal -maxdepth 4 -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null)
+# Some units (e.g. CORE series) keep logs only in the systemd journal
+HAVEJOURNAL=0; command -v journalctl >/dev/null 2>&1 && journalctl -q --no-pager -n 1 >/dev/null 2>&1 && HAVEJOURNAL=1
+readlogs() { for f in $LOGFILES; do case "$f" in *.gz) zcat "$f" 2>/dev/null ;; *) cat "$f" 2>/dev/null ;; esac; done
+  [ $HAVEJOURNAL = 1 ] && journalctl -q --no-pager -o short-iso 2>/dev/null; }
 # Root's home is /home/root on some OS versions
 ROOTHOME=$(awk -F: '$1=="root"{print $6}' /etc/passwd 2>/dev/null); [ -z "$ROOTHOME" ] && ROOTHOME=/root
 
@@ -127,7 +131,9 @@ done
 # 6. Evidence in logs (past infection, even after removal)
 # Count only lines written BY the c4diagd program, not Control4's "Maintain - c4diagd"
 # cleanup script, which ran on every controller.
-if [ -z "$LOGFILES" ]; then say "Log files found under /var/log" "none"; else say "Log files found under /var/log" "$(echo $LOGFILES | wc -w)"; fi
+if [ -z "$LOGFILES" ]; then say "Log files (/var/log, /mnt/internal)" "none"; else say "Log files (/var/log, /mnt/internal)" "$(echo $LOGFILES | wc -w)"; fi
+JSTART=""; [ $HAVEJOURNAL = 1 ] && JSTART=$(journalctl -q --no-pager -o short-iso 2>/dev/null | head -1 | cut -d' ' -f1)
+if [ -n "$JSTART" ]; then say "systemd journal" "searched (entries from $JSTART)"; else say "systemd journal" "not available or empty"; fi
 LOGHITS=$(readlogs | grep -E 'c4diagd\[[0-9]+\]|\[c4diagd [0-9]|c4diagd starting|NOT ARMED' | grep -vi maintain | wc -l)
 LOGHITS=$(echo $LOGHITS)
 say "Log lines written by c4diagd" "${LOGHITS:-0}"

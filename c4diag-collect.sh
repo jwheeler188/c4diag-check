@@ -1,6 +1,6 @@
 #!/bin/sh
 # c4diag-collect.sh  -  gather c4diagd / c4hijack evidence into one archive for Control4
-# Analyst: James Wheeler   Rev 1.3   November 25, 2026
+# Analyst: James Wheeler   Rev 1.4   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-collect.sh
 # Only READS from the system. It writes a working folder and a .tar.gz under /tmp
@@ -52,7 +52,7 @@ grab /etc/inittab /etc/ssh/sshd_config /etc/ssh/ssh_c4_ca.pub /etc/ssh/root_prin
      /etc/ssh/revoked-keys.krl /root/.ssh/authorized_keys /home/root/.ssh/authorized_keys /etc/passwd /etc/network/interfaces \
      /mnt/internal/rms_maint.log /mnt/internal/fix-755444.sh
 # Logs: some OS versions keep them under /var/log/debug/, so search the whole tree
-LOGFILES=$(find /var/log -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null | tr '\n' ' ')
+LOGFILES=$(find /var/log /mnt/internal -maxdepth 4 -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null | tr '\n' ' ')
 for l in $LOGFILES; do grab "$l"; done
 
 # Recovery partition (mounted read-only if it is not already mounted)
@@ -82,6 +82,8 @@ run dpkg-patch sh -c 'dpkg -l 2>/dev/null | grep -i patch'
 run systemctl-c4diagd sh -c 'systemctl status c4diagd 2>&1; systemctl list-unit-files 2>/dev/null | grep -i masked'
 run sysman sh -c 'sysman list 2>/dev/null || ls /etc/sysman.d'
 run c4diag-log-lines sh -c 'for f in '"$LOGFILES"'; do case "$f" in *.gz) zcat "$f";; *) cat "$f";; esac; done 2>/dev/null | grep -i c4diag'
+run journal-c4diag sh -c 'command -v journalctl >/dev/null && journalctl -q --no-pager -o short-iso 2>/dev/null | grep -iE "c4diag|Accepted (password|publickey|keyboard-interactive) for root"'
+run journal-range sh -c 'command -v journalctl >/dev/null && { journalctl -q --no-pager -o short-iso 2>/dev/null | head -1; journalctl -q --no-pager -o short-iso 2>/dev/null | tail -1; }'
 run relay-password-logins sh -c 'for f in '"$LOGFILES"'; do case "$f" in *.gz) zcat "$f";; *) cat "$f";; esac; done 2>/dev/null | grep -iE "Accepted (password|publickey) for root from 127\.0\.0\.1"'
 run dir-times sh -c 'ls -ld --full-time /usr/local /usr/local/bin /opt /opt/.c4diag /etc/ssh/sshd_config /etc/inittab 2>/dev/null || ls -ld /usr/local /usr/local/bin /opt /etc/ssh/sshd_config /etc/inittab'
 run sshd-start sh -c 'P=$(pidof sshd | tr " " "\n" | sort -n | head -1); echo "pid=$P btime=$(awk "/^btime/{print \$2}" /proc/stat) hz=$(getconf CLK_TCK 2>/dev/null) starttime_ticks=$(awk "{print \$22}" /proc/$P/stat 2>/dev/null)"'
@@ -96,7 +98,7 @@ run api-cert sh -c 'for c in /opt/control4/etc/ssl/certs/api.pem /etc/openvpn/ap
   echo "c4diagd evidence archive"
   echo "Host:      $H"
   echo "Collected: $TS (UTC)"
-  echo "Collector: c4diag-collect.sh rev 1.3"
+  echo "Collector: c4diag-collect.sh rev 1.4"
   echo "WARNING:   files/usr/local/bin/c4diagd (if present) is live malware. Do not run it."
   echo
   echo "SHA-256 of collected files:"

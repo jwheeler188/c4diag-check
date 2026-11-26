@@ -2,6 +2,12 @@
 
 All times CST.
 
+## 1.10 — Nov 25, 2026, 11:20 PM
+From LimitedLiabilities' second run (CORE 5, PREVIOUSLY INFECTED, found with rev 1.5):
+- Check 1.4 and collector 1.4: also search the systemd journal and logs under /mnt/internal. The CORE 5 had no log files under /var/log, so the log checks had nothing to read.
+- Launchers 1.6: when no saved key matches a controller, list the key folders tried and explain that each one is a controller MAC. If the controller's MAC isn't there, run the Jailbreak tool's SSH Access on it first.
+- Windows launcher: ssh errors now show as plain text instead of PowerShell "NativeCommandError" blocks.
+
 ## 1.9 — Nov 25, 2026, 11:05 PM
 From a field report by LimitedLiabilities (Windows, two jailbroken controllers), where every copy failed with "lost connection":
 - Launchers 1.5 accept a key **folder** (e.g. the Jailbreak tool's `Keys - DO NOT DELETE`). They find the private keys inside, test each sub-folder against the controller without prompting, and use the one it accepts. A clear message is shown if none is accepted. Giving the folder used to make every login fail.

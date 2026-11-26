@@ -4,7 +4,7 @@
   and saves each report to a text file.
 
 .DESCRIPTION
-  Analyst: James Wheeler   Rev 1.5   November 25, 2026
+  Analyst: James Wheeler   Rev 1.6   November 25, 2026
   HC-800 / newer OpenSSH fixes contributed by CK (Control4 DIY Discord).
   Requires the OpenSSH client built into Windows 10/11 (ssh and scp) and root SSH
   access to the controller. c4diag-check.sh must be in the same folder as this file.
@@ -62,7 +62,7 @@ if ($Host.Name -eq "Windows PowerShell ISE Host") {
 # Interactive menu when no controller IP was given
 if (-not $Ip -or $Ip.Count -eq 0) {
     Write-Host ""
-    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.5)" -ForegroundColor Cyan
+    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.6)" -ForegroundColor Cyan
     Write-Host "Everything here is read-only on the controller. You need root SSH access."
     Write-Host ""
     $entry = Read-Host "Controller IP address(es), separated by commas"
@@ -173,7 +173,8 @@ foreach ($target in $Ip) {
 
     # Ask the RUNNING sshd which login methods it offers (no login, no password sent).
     # sshd_config can say "no" while an sshd that was never restarted still accepts passwords.
-    $probe = (& ssh -o PreferredAuthentications=none -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o LogLevel=ERROR "${User}@${target}" exit 2>&1 | Out-String)
+    # ForEach "$_" turns PowerShell 5.1's NativeCommandError records back into plain ssh text
+    $probe = (& ssh -o PreferredAuthentications=none -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o LogLevel=ERROR "${User}@${target}" exit 2>&1 | ForEach-Object { "$_" }) -join "`n"
     $methods = ""
     $authLine = "Running sshd login methods (tested from this PC): unknown"
     if ($probe -match "Permission denied \(([^)]*)\)") {
@@ -204,13 +205,15 @@ foreach ($target in $Ip) {
         foreach ($grp in $keyGroups) {
             $try = @() + $baseOpts + @("-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes")
             foreach ($kf in $grp) { $try += @("-i", $kf) }
-            $lastErr = (& ssh @try "${User}@${target}" exit 2>&1 | Out-String).Trim()
+            $lastErr = ((& ssh @try "${User}@${target}" exit 2>&1 | ForEach-Object { "$_" }) -join " ").Trim()
             if ($LASTEXITCODE -eq 0) { $chosen = $grp; break }
         }
         if (-not $chosen) {
             Write-Host "None of the keys from $IdentityFile were accepted by $target." -ForegroundColor Red
             if ($lastErr) { Write-Host "ssh said: $lastErr" -ForegroundColor DarkGray }
-            Write-Host "If you jailbroke this controller from another PC, or set up SSH again since, its key will be in that PC's Keys folder." -ForegroundColor Yellow
+            Write-Host ("Key folders tried: {0}" -f (($keyGroups | ForEach-Object { Split-Path (Split-Path $_[0] -Parent) -Leaf }) -join ", ")) -ForegroundColor DarkGray
+            Write-Host "Each sub-folder of the Keys folder is one controller (named by MAC). If this controller's MAC isn't there, SSH was never set up for it from this PC:" -ForegroundColor Yellow
+            Write-Host "run the Jailbreak tool's 'SSH Access' mode on it first (or use the Keys folder from the PC that did)." -ForegroundColor Yellow
             $summary += [pscustomobject]@{ Controller = $target; Result = "NOT CHECKED (no key accepted)"; Report = ""; Evidence = "" }
             continue
         }
