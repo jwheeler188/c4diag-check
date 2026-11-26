@@ -2,6 +2,9 @@
 
 All times CST.
 
+## Docs — Nov 25, 2026, 10:50 PM
+- Incident report rev 2.1: evening updates (no new official information, conflicting OS 3.3.3 reports, two more confirmed past infections on OS 3.4.3, toolkit fixes for OS 3.4.x and jailbroken units); Finexus flagged as unreliable; homeowner sentiment; new section on community alternatives (7.7).
+
 ## 1.8 — Nov 25, 2026, 10:25 PM
 - Windows launcher 1.4 and Mac/Linux launcher 1.4: if the controller only accepts key login and no key file was given, stop before copying and say so, with where to find the Jailbreak tool's key. Before, every step failed with a vague "lost connection" (reported in issue #2 by RollyandSam on a jailbroken CORE 5).
 - The menu's key-file prompt now mentions the Jailbreak tool's key folder.
