@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # c4diag-run.sh  -  Mac / Linux launcher for the c4diagd check and evidence collection
-# Analyst: James Wheeler   Rev 1.3  (key-file login, live password-auth test)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.4  (stops early with a hint when a controller only accepts key login)   November 25, 2026
 #
 # Keep c4diag-check.sh and c4diag-collect.sh in the same folder as this file.
 # Needs root SSH access to the controller.
@@ -40,7 +40,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$IPS" ]; then
-  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.3)${OFF}"
+  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.4)${OFF}"
   echo "Everything here is read-only on the controller. You need root SSH access."; echo
   read -r -p "Controller IP address(es), separated by commas: " IPS
   [ -z "$IPS" ] && { echo "${RED}No IP entered.${OFF}"; exit 1; }
@@ -51,7 +51,7 @@ if [ -z "$IPS" ]; then
   echo "  4) Collect evidence only (a quick check still runs first and stops if the unit looks armed)"
   read -r -p "Choose 1-4 [2]: " CH
   case "$CH" in 1) COLLECT=none ;; 3) COLLECT=always ;; 4) COLLECT=always; COLLECT_ONLY=1 ;; *) COLLECT=auto ;; esac
-  read -r -p "SSH private key file (leave blank to log in with a password): " K
+  read -r -p "SSH private key file (blank = password; jailbroken units usually need the Jailbreak tool's key): " K
   [ -n "$K" ] && KEYFILE="${K/#\~/$HOME}"
   read -r -p "Folder for reports [$OUTDIR]: " O
   [ -n "$O" ] && OUTDIR="${O/#\~/$HOME}"
@@ -93,6 +93,13 @@ for T in "${LIST[@]}"; do
   AUTHLINE="Running sshd login methods (tested from this computer): ${METHODS:-unknown}"
   echo "$METHODS" | grep -qE 'password|keyboard-interactive' && AUTHLINE="$AUTHLINE   <-- PASSWORD LOGIN IS LIVE (attacker enabled this; restart sshd after fixing sshd_config)"
   echo "$AUTHLINE"
+  # Jailbroken controllers usually accept key login only. Without a key every login would
+  # fail with a vague "lost connection", so stop here and say what to do.
+  if [ -z "$KEYFILE" ] && [ -n "$METHODS" ] && ! echo "$METHODS" | grep -qE 'password|keyboard-interactive'; then
+    echo "${RED}$T only accepts key login (no passwords). Run again with -k <private key file>, or enter it in the menu.${OFF}"
+    echo "${YEL}Jailbroken with the Control4 Jailbreak tool? Use the private key in its 'Keys - DO NOT DELETE/<controller MAC>' folder (the ssh_host_*_key file without .pub).${OFF}"
+    SUMMARY+="$T | NOT CHECKED (key login required)"$'\n'; continue
+  fi
 
   if ! scp -q "${SCPOPT[@]}" "$TMPD/c4diag-check.sh" "$USER_NAME@$T:/tmp/c4diag-check.sh"; then
     echo "${RED}Could not copy the script to $T (check the IP, network and SSH access).${OFF}"

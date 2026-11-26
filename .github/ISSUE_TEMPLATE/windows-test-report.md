@@ -25,9 +25,11 @@ labels: windows-test
 
 ### Result
 - Did it run to the end? yes / no
-- Result shown (NO INDICATORS / PREVIOUSLY INFECTED / INFECTED / ARMED):
+- Result shown (NO INDICATORS / POSSIBLE PAST INFECTION / PREVIOUSLY INFECTED / INFECTED / ARMED):
 - Report file saved? yes / no
 - Evidence archive downloaded (if collecting)? yes / no / n/a
+- Logged in with: password / key file (e.g. from the Jailbreak tool)
+- Toolkit revision (shown at the top of the menu):
 - How many times were you asked for a password?
 
 ### Problems

@@ -2,6 +2,13 @@
 
 All times CST.
 
+## 1.8 — Nov 25, 2026, 10:25 PM
+- Windows launcher 1.4 and Mac/Linux launcher 1.4: if the controller only accepts key login and no key file was given, stop before copying and say so, with where to find the Jailbreak tool's key. Before, every step failed with a vague "lost connection" (reported in issue #2 by RollyandSam on a jailbroken CORE 5).
+- The menu's key-file prompt now mentions the Jailbreak tool's key folder.
+- README: second confirmed native Windows run (CORE 5, OS 3.4.3); key-login note.
+- Windows test report template: added POSSIBLE PAST INFECTION, login method and toolkit revision.
+- Guide rev 2.1 updated to match.
+
 ## 1.7 — Nov 25, 2026, 5:50 PM
 Fixes from a field report by muroglio on an EA-5 (OS 3.4.3) that rev 1.2 wrongly reported as **NO INDICATORS FOUND**, although it was staged on Nov 22 and cleaned by Control4 on Nov 23.
 - Check 1.3 and collector 1.3: search all of `/var/log`, including `/var/log/debug/` (where OS 3.4.x keeps its logs), instead of only `/var/log/*`.

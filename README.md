@@ -12,7 +12,7 @@ Copies of this report have been circulating, and some contain guidance that has 
 
 ## 🧪 Windows testers wanted
 
-The Windows launcher (`c4diag-check.ps1`) has had **one confirmed real-world run** so far (against an HC-800, by CK, who also contributed fixes in rev 1.2). More native Windows runs are needed across controller models and OS versions; Windows under Parallels or other VMs doesn't count as a native test.
+The Windows launcher (`c4diag-check.ps1`) has **two confirmed real-world runs** so far: an HC-800 (CK, who also contributed fixes in rev 1.2) and a CORE 5 on OS 3.4.3 (RollyandSam, including evidence collection). More native Windows runs are needed across controller models and OS versions; Windows under Parallels or other VMs doesn't count as a native test.
 
 If you can run it on a **native Windows 10 or 11 machine** (not a VM) against a controller you have root SSH on:
 
@@ -68,6 +68,8 @@ The menu also asks for an SSH key file; leave it blank to log in with a password
 bash c4diag-run.sh -i 192.168.1.50 -k ~/.ssh/c4_ed25519
 ```
 
+**Jailbroken controllers usually accept key login only.** If you jailbroke with the Control4 Jailbreak tool, use the private key from its `Keys - DO NOT DELETE\<controller MAC>` folder (the `ssh_host_*_key` file, not the `.pub`). Since rev 1.4 the launchers detect a key-only controller and tell you this, instead of failing with "lost connection".
+
 Before logging in, both launchers ask the controller's running SSH server which login methods it offers (no password is sent). If password login is offered, the report says **PASSWORD LOGIN IS LIVE**: the attacker turned it on, and a running sshd keeps it until it is restarted, even after `sshd_config` is fixed.
 
 Command-line options are in the guide and at the top of each launcher.
@@ -95,6 +97,7 @@ See section 6.4 of the guide: log retention, other kit builds, recovery partitio
 - Control4 DIY Unofficial Discord community for the original discovery and analysis.
 - **TripleC** for spotting the masked-service false positive.
 - **CK** for the HC-800 / newer OpenSSH scp fix and Windows launcher improvements.
+- **RollyandSam** for the CORE 5 Windows test that confirmed the key-login issue.
 - **muroglio** for the detailed EA-5 (OS 3.4.3) field report behind rev 1.3: key-only SSH, `/var/log/debug`, `/home/root`, stale sshd and BusyBox issues.
 
 Analyst / maintainer: James Wheeler

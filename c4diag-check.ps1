@@ -4,7 +4,7 @@
   and saves each report to a text file.
 
 .DESCRIPTION
-  Analyst: James Wheeler   Rev 1.3   November 25, 2026
+  Analyst: James Wheeler   Rev 1.4   November 25, 2026
   HC-800 / newer OpenSSH fixes contributed by CK (Control4 DIY Discord).
   Requires the OpenSSH client built into Windows 10/11 (ssh and scp) and root SSH
   access to the controller. c4diag-check.sh must be in the same folder as this file.
@@ -59,7 +59,7 @@ if ($Host.Name -eq "Windows PowerShell ISE Host") {
 # Interactive menu when no controller IP was given
 if (-not $Ip -or $Ip.Count -eq 0) {
     Write-Host ""
-    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.3)" -ForegroundColor Cyan
+    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.4)" -ForegroundColor Cyan
     Write-Host "Everything here is read-only on the controller. You need root SSH access."
     Write-Host ""
     $entry = Read-Host "Controller IP address(es), separated by commas"
@@ -78,7 +78,7 @@ if (-not $Ip -or $Ip.Count -eq 0) {
         "4" { $Collect = "Always"; $CollectOnly = $true }
         default { $Collect = "Auto" }
     }
-    $k = Read-Host "SSH private key file (leave blank to log in with a password)"
+    $k = Read-Host "SSH private key file (blank = password; jailbroken units usually need the key from the Jailbreak tool's 'Keys - DO NOT DELETE' folder)"
     if ($k) { $IdentityFile = $k.Trim('"') }
     $o = Read-Host "Folder for reports [$OutDir]"
     if ($o) { $OutDir = $o }
@@ -149,6 +149,7 @@ foreach ($target in $Ip) {
     # Ask the RUNNING sshd which login methods it offers (no login, no password sent).
     # sshd_config can say "no" while an sshd that was never restarted still accepts passwords.
     $probe = (& ssh -o PreferredAuthentications=none -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o LogLevel=ERROR "${User}@${target}" exit 2>&1 | Out-String)
+    $methods = ""
     $authLine = "Running sshd login methods (tested from this PC): unknown"
     if ($probe -match "Permission denied \(([^)]*)\)") {
         $methods = $Matches[1]
@@ -156,6 +157,15 @@ foreach ($target in $Ip) {
         if ($methods -match "password|keyboard-interactive") { $authLine += "   <-- PASSWORD LOGIN IS LIVE (attacker enabled this; restart sshd after fixing sshd_config)" }
     }
     Write-Host $authLine -ForegroundColor $(if ($authLine -match "LIVE") { "Yellow" } else { "Gray" })
+
+    # Jailbroken controllers usually accept key login only. Without a key file every login
+    # would fail with a vague "lost connection", so stop here and say what to do.
+    if (-not $IdentityFile -and $methods -and $methods -notmatch "password|keyboard-interactive") {
+        Write-Host "$target only accepts key login (no passwords). Run again with -IdentityFile, or enter the key file in the menu." -ForegroundColor Red
+        Write-Host "Jailbroken with the Control4 Jailbreak tool? Use the private key in its 'Keys - DO NOT DELETE\<controller MAC>' folder (the ssh_host_*_key file without .pub)." -ForegroundColor Yellow
+        $summary += [pscustomobject]@{ Controller = $target; Result = "NOT CHECKED (key login required)"; Report = ""; Evidence = "" }
+        continue
+    }
 
     Show-Step "Login 1 of 2: copying the check script"
     & scp @scpOpts $lfCopy "${User}@${target}:$remote"
