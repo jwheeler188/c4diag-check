@@ -2,6 +2,11 @@
 
 All times CST.
 
+## 1.11 — Nov 26, 2026, 10:45 AM
+- Check 1.5: reports when sshd_config last changed even if sshd isn't running, and flags a change between Nov 19 and 24. On every infected unit reported so far (CORE 1 on OS 4.2.1, CORE 5s, EA-5) the kit rewrote this file on Nov 22, and Control4's cleanup left it alone. On its own this gives POSSIBLE PAST INFECTION.
+- Check 1.5: prints the active sshd_config settings so reports can be compared with clean units (thanks Zeyphod and diehardbattery732 for the first two).
+- Check 1.5: new **Hardening suggestions** section, separate from the result: `PermitRootLogin yes` -> `prohibit-password` (suggested by rob____), `KbdInteractiveAuthentication` / `ChallengeResponseAuthentication yes` -> `no`, `PasswordAuthentication yes` -> `no`. `PermitRootLogin yes` is Control4's default, so it is not treated as a sign of infection.
+
 ## 1.10 — Nov 25, 2026, 11:20 PM
 From LimitedLiabilities' second run (CORE 5, PREVIOUSLY INFECTED, found with rev 1.5):
 - Check 1.4 and collector 1.4: also search the systemd journal and logs under /mnt/internal. The CORE 5 had no log files under /var/log, so the log checks had nothing to read.

@@ -1,12 +1,12 @@
 #!/bin/sh
 # c4diag-check.sh  -  READ-ONLY check for the c4diagd / c4hijack kit on a Control4 controller
-# Analyst: James Wheeler   Rev 1.4 (adds systemd journal and /mnt/internal log search)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.5 (sshd_config settings and change time, hardening suggestions)   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-check.sh | tee /tmp/c4diag-check.txt
 # This script only reads. It does not stop, delete or change anything.
 # If it reports ARMED, stop and escalate to Control4. Do not reboot or kill processes.
 
-echo "=== c4diag check rev 1.4  $(date)  host: $(hostname) ==="
+echo "=== c4diag check rev 1.5  $(date)  host: $(hostname) ==="
 FOUND=0; ARMED=0; CLEANED=0; TIMEHINT=0
 
 say() { printf '%-48s %s\n' "$1" "$2"; }
@@ -114,9 +114,19 @@ if [ -n "$SSHD_PID" ] && [ -f /etc/ssh/sshd_config ]; then
   ST=$(awk '{print $22}' /proc/$SSHD_PID/stat 2>/dev/null)
   if [ -n "$ST" ] && [ -n "$BTIME" ]; then
     SSHD_START=$(( BTIME + ST / HZ )); CFG=$(mtime /etc/ssh/sshd_config)
-    say "sshd started" "$(fmt $SSHD_START)"; say "sshd_config last changed" "$(fmt $CFG)"
+    say "sshd started" "$(fmt $SSHD_START)"
     [ -n "$CFG" ] && [ "$CFG" -gt "$SSHD_START" ] && say "  running sshd" "STARTED BEFORE CONFIG CHANGE  <-- may still accept passwords; restart sshd"
   fi
+fi
+# On every infected unit seen so far, the kit rewrote sshd_config during install (Nov 22) and
+# Control4's cleanup left it alone, so a change in that window is supporting evidence.
+if [ -f /etc/ssh/sshd_config ]; then
+  CFGT=$(mtime /etc/ssh/sshd_config)
+  if [ -n "$CFGT" ] && [ "$CFGT" -ge "$WIN_START" ] && [ "$CFGT" -lt "$WIN_END" ]; then
+    say "sshd_config last changed" "$(fmt $CFGT)  <-- inside Nov 19-24 window"; TIMEHINT=1
+  else say "sshd_config last changed" "$(fmt "$CFGT")"; fi
+  echo "--- sshd_config active settings (compare with a clean unit of the same model/OS) ---"
+  grep -vE '^[[:space:]]*(#|$)' /etc/ssh/sshd_config 2>/dev/null | sed 's/^/  /'
 fi
 for k in /etc/ssh/ssh_c4_ca.pub /etc/ssh/root_principals /etc/ssh/revoked-keys.krl; do
   [ -e "$k" ] && say "$k" "present (good)" || say "$k" "missing (armed kit deletes it; may be normal on older OS)"
@@ -179,6 +189,19 @@ echo "Files changed since Nov 15, 2026 in /etc /usr/local /opt /root /home/root:
 find /etc /usr/local /opt /root /home/root -xdev -type f -mtime -$DAYS 2>/dev/null | grep -v -E '^/opt/control4/.*\.(db|log)$' | head -60
 
 echo
+# 9. Hardening suggestions. These settings are Control4 defaults on clean units too, so they do
+# NOT affect the result; they only reduce what an attacker could do if they got access again.
+echo ""
+echo "--- Hardening suggestions (do not affect the result) ---"
+HARD=0
+cfgval() { grep -iE "^[[:space:]]*$1[[:space:]]" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print tolower($2)}'; }
+[ "$(cfgval PasswordAuthentication)" = yes ] && { echo "  PasswordAuthentication yes -> set to no and restart sshd (the attacker relied on this)"; HARD=1; }
+[ "$(cfgval PermitRootLogin)" = yes ] && { echo "  PermitRootLogin yes -> prohibit-password: root then only accepts keys and Control4's support certificates, whatever the password settings say"; HARD=1; }
+[ "$(cfgval KbdInteractiveAuthentication)" = yes ] && { echo "  KbdInteractiveAuthentication yes -> no (keyboard-interactive can allow password-style logins)"; HARD=1; }
+[ "$(cfgval ChallengeResponseAuthentication)" = yes ] && { echo "  ChallengeResponseAuthentication yes -> no (older name for the same setting)"; HARD=1; }
+if [ $HARD = 1 ]; then echo "  After editing, restart sshd. A Control4 update may restore the default file, so re-check after updates."
+else echo "  none"; fi
+echo ""
 echo "=== RESULT ==="
 if [ $ARMED -eq 1 ]; then
   echo "ARMED / LOCKED INDICATORS FOUND. Do not reboot, kill processes or factory reset. Escalate to Control4."
@@ -187,7 +210,7 @@ elif [ $FOUND -eq 1 ]; then
 elif [ $CLEANED -eq 1 ]; then
   echo "PREVIOUSLY INFECTED, NOW CLEAN. Kit removed or masked, but traces show it was here (logs, relay logins or directory times above). Review access and keep the logs."
 elif [ $TIMEHINT -eq 1 ]; then
-  echo "POSSIBLE PAST INFECTION (timestamps only). /usr/local changed during Nov 19-24, matching kit install/cleanup times, but no log evidence. An OS update that week can also cause this. Confirm with firewall logs or a controller snapshot."
+  echo "POSSIBLE PAST INFECTION (timestamps only). /usr/local or sshd_config changed during Nov 19-24, matching kit install/cleanup times, but no log evidence. An OS update that week can also cause this. Confirm with firewall logs or a controller snapshot."
 else
   echo "NO INDICATORS FOUND. (Logs only go back to the oldest log date above; also check firewall logs.)"
 fi
