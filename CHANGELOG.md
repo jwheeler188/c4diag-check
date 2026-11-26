@@ -2,6 +2,13 @@
 
 All times CST.
 
+## 1.12 — Nov 26, 2026, 1:50 PM
+From muroglio's re-run on 4 controllers (thanks!):
+- Check 1.6 and collector 1.5: **logs were never read on these units.** /var/log is a symlink to /var/volatile/log, and `find /var/log` doesn't follow it, so "Log files: none" and the c4diagd / 127.0.0.1 login counts were 0 without reading anything. Now uses `find /var/log/`, which does. **Anyone who got NO INDICATORS FOUND from check 1.3–1.5 should re-run.**
+- "Oldest log file kept" used the file's modified time, which is "now" for an active log. Replaced with **Log coverage**: the first entry of each log file.
+- "getty ALL COMMENTED OUT <-- review" showed on clean units too: it's the stock inittab on some OS versions. It is now only a warning when kit files are also found.
+- "sshd STARTED BEFORE CONFIG CHANGE" stayed after `kill -HUP`, because a reload keeps the same PID and start time. Reworded as a note; the launcher's outside login-methods test is the real answer.
+
 ## 1.11 — Nov 26, 2026, 10:45 AM
 - Check 1.5: reports when sshd_config last changed even if sshd isn't running, and flags a change between Nov 19 and 24. On every infected unit reported so far (CORE 1 on OS 4.2.1, CORE 5s, EA-5) the kit rewrote this file on Nov 22, and Control4's cleanup left it alone. On its own this gives POSSIBLE PAST INFECTION.
 - Check 1.5: prints the active sshd_config settings so reports can be compared with clean units (thanks Zeyphod and diehardbattery732 for the first two).

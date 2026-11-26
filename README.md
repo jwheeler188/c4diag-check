@@ -100,7 +100,7 @@ See section 6.4 of the guide: log retention, other kit builds, recovery partitio
 - **LimitedLiabilities** for the key-folder and host-key prompt report.
 - **Zeyphod** and **diehardbattery732** for sshd_config samples and timing from infected CORE 5 and CORE 1 (OS 4.2.1) units; **rob____** for the PermitRootLogin hardening suggestion.
 - **RollyandSam** for the CORE 5 Windows test that confirmed the key-login issue.
-- **muroglio** for the detailed EA-5 (OS 3.4.3) field report behind rev 1.3: key-only SSH, `/var/log/debug`, `/home/root`, stale sshd and BusyBox issues.
+- **muroglio** for the detailed EA-5 (OS 3.4.3) field report, and the 4-controller re-run that found the /var/log symlink bug in rev 1.6 behind rev 1.3: key-only SSH, `/var/log/debug`, `/home/root`, stale sshd and BusyBox issues.
 
 Analyst / maintainer: James Wheeler
 

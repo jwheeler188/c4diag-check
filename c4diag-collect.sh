@@ -1,6 +1,6 @@
 #!/bin/sh
 # c4diag-collect.sh  -  gather c4diagd / c4hijack evidence into one archive for Control4
-# Analyst: James Wheeler   Rev 1.4   November 25, 2026
+# Analyst: James Wheeler   Rev 1.5   November 26, 2026
 #
 # Run as root over SSH:   sh c4diag-collect.sh
 # Only READS from the system. It writes a working folder and a .tar.gz under /tmp
@@ -52,7 +52,7 @@ grab /etc/inittab /etc/ssh/sshd_config /etc/ssh/ssh_c4_ca.pub /etc/ssh/root_prin
      /etc/ssh/revoked-keys.krl /root/.ssh/authorized_keys /home/root/.ssh/authorized_keys /etc/passwd /etc/network/interfaces \
      /mnt/internal/rms_maint.log /mnt/internal/fix-755444.sh
 # Logs: some OS versions keep them under /var/log/debug/, so search the whole tree
-LOGFILES=$(find /var/log /mnt/internal -maxdepth 4 -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null | tr '\n' ' ')
+LOGFILES=$(find /var/log/ /mnt/internal/ -maxdepth 4 -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null | tr '\n' ' ')
 for l in $LOGFILES; do grab "$l"; done
 
 # Recovery partition (mounted read-only if it is not already mounted)
@@ -98,7 +98,7 @@ run api-cert sh -c 'for c in /opt/control4/etc/ssl/certs/api.pem /etc/openvpn/ap
   echo "c4diagd evidence archive"
   echo "Host:      $H"
   echo "Collected: $TS (UTC)"
-  echo "Collector: c4diag-collect.sh rev 1.4"
+  echo "Collector: c4diag-collect.sh rev 1.5"
   echo "WARNING:   files/usr/local/bin/c4diagd (if present) is live malware. Do not run it."
   echo
   echo "SHA-256 of collected files:"

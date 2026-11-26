@@ -1,12 +1,12 @@
 #!/bin/sh
 # c4diag-check.sh  -  READ-ONLY check for the c4diagd / c4hijack kit on a Control4 controller
-# Analyst: James Wheeler   Rev 1.5 (sshd_config settings and change time, hardening suggestions)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.6 (log symlink fix and false alarms from muroglio's 4-controller run)   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-check.sh | tee /tmp/c4diag-check.txt
 # This script only reads. It does not stop, delete or change anything.
 # If it reports ARMED, stop and escalate to Control4. Do not reboot or kill processes.
 
-echo "=== c4diag check rev 1.5  $(date)  host: $(hostname) ==="
+echo "=== c4diag check rev 1.6  $(date)  host: $(hostname) ==="
 FOUND=0; ARMED=0; CLEANED=0; TIMEHINT=0
 
 say() { printf '%-48s %s\n' "$1" "$2"; }
@@ -19,7 +19,7 @@ mtime() { stat -c %Y "$1" 2>/dev/null || date -r "$1" +%s 2>/dev/null; }
 fmt() { date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "$1"; }
 # Log files: some OS versions keep them under /var/log/debug/
 # Log files: /var/log (OS 3.4.x uses /var/log/debug/), plus persistent logs under /mnt/internal
-LOGFILES=$(find /var/log /mnt/internal -maxdepth 4 -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null)
+LOGFILES=$(find /var/log/ /mnt/internal/ -maxdepth 4 -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null)
 # Some units (e.g. CORE series) keep logs only in the systemd journal
 HAVEJOURNAL=0; command -v journalctl >/dev/null 2>&1 && journalctl -q --no-pager -n 1 >/dev/null 2>&1 && HAVEJOURNAL=1
 readlogs() { for f in $LOGFILES; do case "$f" in *.gz) zcat "$f" 2>/dev/null ;; *) cat "$f" 2>/dev/null ;; esac; done
@@ -64,9 +64,11 @@ else
 fi
 # Stock inittab files often contain commented-out getty examples, so only treat this
 # as an armed sign when there is NO active getty line left at all.
+# On some OS versions the stock inittab has every getty line commented out, so this is only
+# a warning when kit files were also found.
 if [ -f /etc/inittab ] && grep -q getty /etc/inittab && ! grep -q '^[^#].*getty' /etc/inittab; then
-  say "/etc/inittab getty lines" "ALL COMMENTED OUT  <-- review (armed kit does this)"
-  [ $FOUND -eq 1 ] && ARMED=1
+  if [ $FOUND -eq 1 ]; then say "/etc/inittab getty lines" "ALL COMMENTED OUT  <-- armed kit does this"; ARMED=1
+  else say "/etc/inittab getty lines" "all commented out (stock on some OS versions)"; fi
 fi
 
 # 3. Running process / network
@@ -115,7 +117,9 @@ if [ -n "$SSHD_PID" ] && [ -f /etc/ssh/sshd_config ]; then
   if [ -n "$ST" ] && [ -n "$BTIME" ]; then
     SSHD_START=$(( BTIME + ST / HZ )); CFG=$(mtime /etc/ssh/sshd_config)
     say "sshd started" "$(fmt $SSHD_START)"
-    [ -n "$CFG" ] && [ "$CFG" -gt "$SSHD_START" ] && say "  running sshd" "STARTED BEFORE CONFIG CHANGE  <-- may still accept passwords; restart sshd"
+    # sshd reloads its config on SIGHUP without changing PID or start time, so this can't tell
+    # a reloaded sshd from a stale one. The launchers' outside test is the real answer.
+    [ -n "$CFG" ] && [ "$CFG" -gt "$SSHD_START" ] && say "  running sshd" "started before the last config change: fine if it was reloaded (kill -HUP) since; see the launcher's login-methods line"
   fi
 fi
 # On every infected unit seen so far, the kit rewrote sshd_config during install (Nov 22) and
@@ -155,8 +159,14 @@ if [ "${RELAYPW:-0}" -gt 0 ]; then
   CLEANED=1; echo "  (relay-tunnelled password logins match the attack pattern; first/last:)"
   readlogs | grep -iE 'Accepted password for root from 127\.0\.0\.1' | sed -n '1p;$p'
 fi
-OLDEST=$(for f in $LOGFILES; do echo "$(mtime "$f") $f"; done | sort -n | head -1 | cut -d' ' -f2-)
-[ -n "$OLDEST" ] && say "Oldest log file kept" "$(fmt "$(mtime "$OLDEST")") (no log evidence before this)"
+# Log coverage: show the FIRST entry of each file (file times only show the last write)
+if [ -n "$LOGFILES" ]; then
+  echo "Log coverage (first entry in each file; no log evidence before the earliest):"
+  for f in $LOGFILES; do
+    case "$f" in *.gz) L=$(zcat "$f" 2>/dev/null | head -1) ;; *) L=$(head -1 "$f" 2>/dev/null) ;; esac
+    [ -n "$L" ] && printf '  %-40s %s\n' "$f" "$(echo "$L" | cut -c1-32)"
+  done
+fi
 
 # 6b. Directory timestamps. The kit installed into /usr/local and the Control4 cleanup
 # (Nov 23 ~06:30 UTC) removed files from /usr/local/bin and /opt, changing their times.
