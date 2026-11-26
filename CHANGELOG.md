@@ -2,6 +2,14 @@
 
 All times CST.
 
+## 1.9 — Nov 25, 2026, 11:05 PM
+From a field report by LimitedLiabilities (Windows, two jailbroken controllers), where every copy failed with "lost connection":
+- Launchers 1.5 accept a key **folder** (e.g. the Jailbreak tool's `Keys - DO NOT DELETE`). They find the private keys inside, test each sub-folder against the controller without prompting, and use the one it accepts. A clear message is shown if none is accepted. Giving the folder used to make every login fail.
+- First connection to a controller no longer stops at the yes/no host-key prompt (`StrictHostKeyChecking=accept-new`). A changed host key is still refused.
+- scp no longer runs with `-q`, so the real ssh error is shown instead of just "lost connection".
+- "keyboard-interactive" alone is no longer reported as PASSWORD LOGIN IS LIVE; it gets a softer note to check the sshd settings.
+- Mac/Linux launcher avoids bash 4 features (macOS ships bash 3.2).
+
 ## Docs — Nov 25, 2026, 10:50 PM
 - Incident report rev 2.1: evening updates (no new official information, conflicting OS 3.3.3 reports, two more confirmed past infections on OS 3.4.3, toolkit fixes for OS 3.4.x and jailbroken units); Finexus flagged as unreliable; homeowner sentiment; new section on community alternatives (7.7).
 

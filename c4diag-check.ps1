@@ -4,7 +4,7 @@
   and saves each report to a text file.
 
 .DESCRIPTION
-  Analyst: James Wheeler   Rev 1.4   November 25, 2026
+  Analyst: James Wheeler   Rev 1.5   November 25, 2026
   HC-800 / newer OpenSSH fixes contributed by CK (Control4 DIY Discord).
   Requires the OpenSSH client built into Windows 10/11 (ssh and scp) and root SSH
   access to the controller. c4diag-check.sh must be in the same folder as this file.
@@ -28,6 +28,9 @@
 .EXAMPLE
   .\c4diag-check.ps1 -Ip 192.168.1.50 -IdentityFile $HOME\.ssh\c4_ed25519
   (key-only SSH: log in with a private key file instead of a password)
+.EXAMPLE
+  .\c4diag-check.ps1 -Ip 192.168.1.50 -IdentityFile "C:\Tools\Control4.Jailbreak\Keys - DO NOT DELETE"
+  (a folder also works: the launcher finds the keys in it and uses the ones the controller accepts)
 .EXAMPLE
   .\c4diag-check.ps1 -Ip 192.168.1.50 -CollectOnly
   (collect evidence without showing the full check; the check still runs first and
@@ -59,7 +62,7 @@ if ($Host.Name -eq "Windows PowerShell ISE Host") {
 # Interactive menu when no controller IP was given
 if (-not $Ip -or $Ip.Count -eq 0) {
     Write-Host ""
-    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.4)" -ForegroundColor Cyan
+    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.5)" -ForegroundColor Cyan
     Write-Host "Everything here is read-only on the controller. You need root SSH access."
     Write-Host ""
     $entry = Read-Host "Controller IP address(es), separated by commas"
@@ -78,7 +81,7 @@ if (-not $Ip -or $Ip.Count -eq 0) {
         "4" { $Collect = "Always"; $CollectOnly = $true }
         default { $Collect = "Auto" }
     }
-    $k = Read-Host "SSH private key file (blank = password; jailbroken units usually need the key from the Jailbreak tool's 'Keys - DO NOT DELETE' folder)"
+    $k = Read-Host "SSH key file or folder (blank = password; for jailbroken units enter the Jailbreak tool's 'Keys - DO NOT DELETE' folder)"
     if ($k) { $IdentityFile = $k.Trim('"') }
     $o = Read-Host "Folder for reports [$OutDir]"
     if ($o) { $OutDir = $o }
@@ -96,8 +99,30 @@ if (-not (Test-Path $CheckScript)) {
     exit 1
 }
 if ($IdentityFile -and -not (Test-Path $IdentityFile)) {
-    Write-Host "Cannot find the key file $IdentityFile." -ForegroundColor Red
+    Write-Host "Cannot find the key file or folder $IdentityFile." -ForegroundColor Red
     exit 1
+}
+# A key FOLDER is allowed (e.g. the Jailbreak tool's "Keys - DO NOT DELETE"): collect the private
+# keys in it, grouped by sub-folder (one sub-folder per controller MAC), and later use the group
+# each controller accepts.
+$keyGroups = @()
+$keyFolder = $false
+if ($IdentityFile) {
+    if (Test-Path $IdentityFile -PathType Container) {
+        $keyFolder = $true
+        $found = Get-ChildItem -Path $IdentityFile -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^(ssh_host_.*_key|id_(rsa|ed25519|ecdsa))$' }
+        if (-not $found) {
+            Write-Host "No private keys (ssh_host_*_key or id_*) found in $IdentityFile." -ForegroundColor Red
+            exit 1
+        }
+        foreach ($g in ($found | Group-Object DirectoryName)) {
+            $keyGroups += ,@($g.Group | ForEach-Object { $_.FullName })
+        }
+        Write-Host ("Found {0} key file(s) in {1} folder(s) under {2}." -f @($found).Count, $keyGroups.Count, $IdentityFile)
+    } else {
+        $keyGroups += ,@((Resolve-Path $IdentityFile).Path)
+    }
 }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 
@@ -123,7 +148,7 @@ $summary = @()
 # Each ssh/scp call is its own login, so the password is asked more than once.
 Write-Host ""
 if ($IdentityFile) {
-    Write-Host "Using key file $IdentityFile. If the key has a passphrase you will be asked for it at each login." -ForegroundColor Yellow
+    Write-Host "Logging in with keys from $IdentityFile. If a key has a passphrase you will be asked for it at each login." -ForegroundColor Yellow
 } elseif ($Collect -eq "None") {
     Write-Host "You will be asked for the root password 2 times per controller (copy, then run)." -ForegroundColor Yellow
 } else {
@@ -134,11 +159,11 @@ function Show-Step([string]$Text) { Write-Host "  -> $Text" -ForegroundColor Dar
 
 # Newer OpenSSH makes scp use SFTP by default, which controllers do not have
 # ("subsystem request failed"). -O switches back to the classic scp protocol when supported.
-$sshOpts = @("-o", "ConnectTimeout=10")
-if ($IdentityFile) { $sshOpts += @("-i", $IdentityFile, "-o", "IdentitiesOnly=yes") }
-$scpOpts = @("-q") + $sshOpts
+# accept-new: trust a controller's host key the first time without a yes/no prompt (a CHANGED
+# key is still refused). No -q on scp, so real errors are shown instead of just "lost connection".
+$baseOpts = @("-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=accept-new")
 $scpUsage = (& scp 2>&1 | Out-String)
-if ($scpUsage -match "\[-[0-9A-Za-z]*O[0-9A-Za-z]*\]") { $scpOpts += "-O" }
+$scpLegacy = $scpUsage -match "\[-[0-9A-Za-z]*O[0-9A-Za-z]*\]"
 
 foreach ($target in $Ip) {
     $stamp = Get-Date -Format "yyyy-MM-dd_HHmm"
@@ -154,18 +179,47 @@ foreach ($target in $Ip) {
     if ($probe -match "Permission denied \(([^)]*)\)") {
         $methods = $Matches[1]
         $authLine = "Running sshd login methods (tested from this PC): $methods"
-        if ($methods -match "password|keyboard-interactive") { $authLine += "   <-- PASSWORD LOGIN IS LIVE (attacker enabled this; restart sshd after fixing sshd_config)" }
+        if ($methods -match "password") { $authLine += "   <-- PASSWORD LOGIN IS LIVE (attacker enabled this; restart sshd after fixing sshd_config)" }
+        elseif ($methods -match "keyboard-interactive") { $authLine += "   <-- keyboard-interactive offered (can allow password login; check PasswordAuthentication / KbdInteractiveAuthentication)" }
     }
-    Write-Host $authLine -ForegroundColor $(if ($authLine -match "LIVE") { "Yellow" } else { "Gray" })
+    Write-Host $authLine -ForegroundColor $(if ($authLine -match "<--") { "Yellow" } else { "Gray" })
 
     # Jailbroken controllers usually accept key login only. Without a key file every login
     # would fail with a vague "lost connection", so stop here and say what to do.
     if (-not $IdentityFile -and $methods -and $methods -notmatch "password|keyboard-interactive") {
         Write-Host "$target only accepts key login (no passwords). Run again with -IdentityFile, or enter the key file in the menu." -ForegroundColor Red
-        Write-Host "Jailbroken with the Control4 Jailbreak tool? Use the private key in its 'Keys - DO NOT DELETE\<controller MAC>' folder (the ssh_host_*_key file without .pub)." -ForegroundColor Yellow
+        Write-Host "Jailbroken with the Control4 Jailbreak tool? Give its 'Keys - DO NOT DELETE' folder (or a key file inside it)." -ForegroundColor Yellow
         $summary += [pscustomobject]@{ Controller = $target; Result = "NOT CHECKED (key login required)"; Report = ""; Evidence = "" }
         continue
     }
+
+    # Key folder: find the key set this controller accepts (BatchMode = no prompts), so a wrong
+    # key shows a clear message instead of failing at the copy step. A single key file is used
+    # as given (it may have a passphrase, which BatchMode cannot ask for).
+    $sshOpts = @() + $baseOpts
+    if ($keyGroups.Count -gt 0 -and -not $keyFolder) {
+        $sshOpts += @("-o", "IdentitiesOnly=yes", "-i", $keyGroups[0][0])
+    } elseif ($keyGroups.Count -gt 0) {
+        $chosen = $null; $lastErr = ""
+        foreach ($grp in $keyGroups) {
+            $try = @() + $baseOpts + @("-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes")
+            foreach ($kf in $grp) { $try += @("-i", $kf) }
+            $lastErr = (& ssh @try "${User}@${target}" exit 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -eq 0) { $chosen = $grp; break }
+        }
+        if (-not $chosen) {
+            Write-Host "None of the keys from $IdentityFile were accepted by $target." -ForegroundColor Red
+            if ($lastErr) { Write-Host "ssh said: $lastErr" -ForegroundColor DarkGray }
+            Write-Host "If you jailbroke this controller from another PC, or set up SSH again since, its key will be in that PC's Keys folder." -ForegroundColor Yellow
+            $summary += [pscustomobject]@{ Controller = $target; Result = "NOT CHECKED (no key accepted)"; Report = ""; Evidence = "" }
+            continue
+        }
+        Write-Host ("Key accepted: {0}" -f (Split-Path $chosen[0] -Parent)) -ForegroundColor Gray
+        $sshOpts += @("-o", "IdentitiesOnly=yes")
+        foreach ($kf in $chosen) { $sshOpts += @("-i", $kf) }
+    }
+    $scpOpts = @() + $sshOpts
+    if ($scpLegacy) { $scpOpts += "-O" }
 
     Show-Step "Login 1 of 2: copying the check script"
     & scp @scpOpts $lfCopy "${User}@${target}:$remote"

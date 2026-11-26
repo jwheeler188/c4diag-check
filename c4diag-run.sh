@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # c4diag-run.sh  -  Mac / Linux launcher for the c4diagd check and evidence collection
-# Analyst: James Wheeler   Rev 1.4  (stops early with a hint when a controller only accepts key login)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.5  (key folder support, per-controller key test, first-use host keys accepted)   November 25, 2026
 #
 # Keep c4diag-check.sh and c4diag-collect.sh in the same folder as this file.
 # Needs root SSH access to the controller.
@@ -14,7 +14,8 @@
 #
 #   -i  controller IP(s), comma separated     -u  SSH user (default root)
 #   -c  none | auto | always (evidence)       -o  folder for reports (default: current)
-#   -k  SSH private key file (for controllers that only accept key login)
+#   -k  SSH private key file, or a folder of keys such as the Jailbreak tool's
+#       "Keys - DO NOT DELETE" (the key each controller accepts is picked automatically)
 #   --collect-only  collect without printing the full check (check still runs first)
 #
 # The check always runs first. Evidence collection is skipped if the unit looks ARMED.
@@ -40,7 +41,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$IPS" ]; then
-  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.4)${OFF}"
+  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.5)${OFF}"
   echo "Everything here is read-only on the controller. You need root SSH access."; echo
   read -r -p "Controller IP address(es), separated by commas: " IPS
   [ -z "$IPS" ] && { echo "${RED}No IP entered.${OFF}"; exit 1; }
@@ -51,7 +52,7 @@ if [ -z "$IPS" ]; then
   echo "  4) Collect evidence only (a quick check still runs first and stops if the unit looks armed)"
   read -r -p "Choose 1-4 [2]: " CH
   case "$CH" in 1) COLLECT=none ;; 3) COLLECT=always ;; 4) COLLECT=always; COLLECT_ONLY=1 ;; *) COLLECT=auto ;; esac
-  read -r -p "SSH private key file (blank = password; jailbroken units usually need the Jailbreak tool's key): " K
+  read -r -p "SSH key file or folder (blank = password; for jailbroken units the Jailbreak tool's 'Keys - DO NOT DELETE' folder): " K
   [ -n "$K" ] && KEYFILE="${K/#\~/$HOME}"
   read -r -p "Folder for reports [$OUTDIR]: " O
   [ -n "$O" ] && OUTDIR="${O/#\~/$HOME}"
@@ -63,18 +64,27 @@ for f in "$CHECK" $( [ "$COLLECT" != none ] && echo "$COLLECTSH" ); do
 done
 command -v ssh >/dev/null && command -v scp >/dev/null || { echo "${RED}ssh/scp not found.${OFF}"; exit 1; }
 mkdir -p "$OUTDIR"
-[ -n "$KEYFILE" ] && [ ! -f "$KEYFILE" ] && { echo "${RED}Cannot find the key file $KEYFILE.${OFF}"; exit 1; }
+[ -n "$KEYFILE" ] && [ ! -e "$KEYFILE" ] && { echo "${RED}Cannot find the key file or folder $KEYFILE.${OFF}"; exit 1; }
+# A key FOLDER is allowed: collect private keys, grouped by sub-folder (one per controller MAC)
+KEYDIRS=()
+if [ -d "$KEYFILE" ]; then
+  while IFS= read -r d; do KEYDIRS+=("$d"); done < <(find "$KEYFILE" -type f \( -name 'ssh_host_*_key' -o -name 'id_rsa' -o -name 'id_ed25519' -o -name 'id_ecdsa' \) -exec dirname {} \; | sort -u)
+  [ ${#KEYDIRS[@]} -eq 0 ] && { echo "${RED}No private keys (ssh_host_*_key or id_*) found in $KEYFILE.${OFF}"; exit 1; }
+  echo "Found keys in ${#KEYDIRS[@]} folder(s) under $KEYFILE."
+fi
+keyargs() { for f in "$1"/ssh_host_*_key "$1"/id_rsa "$1"/id_ed25519 "$1"/id_ecdsa; do [ -f "$f" ] && printf '%s\n' -i "$f"; done; }
 
 if command -v sha256sum >/dev/null; then HASH="sha256sum"; else HASH="shasum -a 256"; fi
 # Copies with Unix line endings, in case the files were edited on Windows
 TMPD="$(mktemp -d)"
 # Reuse one SSH connection per controller so the password is asked only once
-SSHOPT=(-o ConnectTimeout=10 -o ControlMaster=auto -o "ControlPath=$TMPD/cm-%r@%h-%p" -o ControlPersist=120)
-[ -n "$KEYFILE" ] && SSHOPT+=(-i "$KEYFILE" -o IdentitiesOnly=yes)
+# accept-new: trust a controller's host key the first time without a prompt (a CHANGED key is still refused)
+BASEOPT=(-o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ControlMaster=auto -o "ControlPath=$TMPD/cm-%r@%h-%p" -o ControlPersist=120)
+[ -f "$KEYFILE" ] && BASEOPT+=(-i "$KEYFILE" -o IdentitiesOnly=yes)
+SSHOPT=("${BASEOPT[@]}")
 # Newer OpenSSH (macOS 13+, most current Linux) makes scp use SFTP, which controllers
 # do not have ("subsystem request failed"). -O switches back to classic scp if supported.
-SCPOPT=("${SSHOPT[@]}")
-scp 2>&1 | grep -q -- '\[-[0-9A-Za-z]*O[0-9A-Za-z]*\]' && SCPOPT+=(-O)
+SCPLEGACY=0; scp 2>&1 | grep -q -- '\[-[0-9A-Za-z]*O[0-9A-Za-z]*\]' && SCPLEGACY=1
 tr -d '\r' < "$CHECK" > "$TMPD/c4diag-check.sh"
 [ "$COLLECT" != none ] && tr -d '\r' < "$COLLECTSH" > "$TMPD/c4diag-collect.sh"
 
@@ -91,17 +101,35 @@ for T in "${LIST[@]}"; do
   PROBE="$(ssh -o PreferredAuthentications=none -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "$USER_NAME@$T" exit 2>&1)"
   METHODS="$(echo "$PROBE" | sed -n 's/.*Permission denied (\([^)]*\)).*/\1/p' | head -1)"
   AUTHLINE="Running sshd login methods (tested from this computer): ${METHODS:-unknown}"
-  echo "$METHODS" | grep -qE 'password|keyboard-interactive' && AUTHLINE="$AUTHLINE   <-- PASSWORD LOGIN IS LIVE (attacker enabled this; restart sshd after fixing sshd_config)"
+  if echo "$METHODS" | grep -q password; then AUTHLINE="$AUTHLINE   <-- PASSWORD LOGIN IS LIVE (attacker enabled this; restart sshd after fixing sshd_config)"
+  elif echo "$METHODS" | grep -q keyboard-interactive; then AUTHLINE="$AUTHLINE   <-- keyboard-interactive offered (can allow password login; check PasswordAuthentication / KbdInteractiveAuthentication)"; fi
   echo "$AUTHLINE"
   # Jailbroken controllers usually accept key login only. Without a key every login would
   # fail with a vague "lost connection", so stop here and say what to do.
   if [ -z "$KEYFILE" ] && [ -n "$METHODS" ] && ! echo "$METHODS" | grep -qE 'password|keyboard-interactive'; then
     echo "${RED}$T only accepts key login (no passwords). Run again with -k <private key file>, or enter it in the menu.${OFF}"
-    echo "${YEL}Jailbroken with the Control4 Jailbreak tool? Use the private key in its 'Keys - DO NOT DELETE/<controller MAC>' folder (the ssh_host_*_key file without .pub).${OFF}"
+    echo "${YEL}Jailbroken with the Control4 Jailbreak tool? Give its 'Keys - DO NOT DELETE' folder (or a key file inside it) with -k.${OFF}"
     SUMMARY+="$T | NOT CHECKED (key login required)"$'\n'; continue
   fi
 
-  if ! scp -q "${SCPOPT[@]}" "$TMPD/c4diag-check.sh" "$USER_NAME@$T:/tmp/c4diag-check.sh"; then
+  # Key folder: find the key set this controller accepts (BatchMode = no prompts)
+  SSHOPT=("${BASEOPT[@]}")
+  if [ ${#KEYDIRS[@]} -gt 0 ]; then
+    CHOSEN=""; LASTERR=""
+    for D in "${KEYDIRS[@]}"; do
+      KA=(); while IFS= read -r a; do KA+=("$a"); done < <(keyargs "$D")
+      LASTERR="$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o IdentitiesOnly=yes "${KA[@]}" "$USER_NAME@$T" exit 2>&1)" && { CHOSEN="$D"; break; }
+    done
+    if [ -z "$CHOSEN" ]; then
+      echo "${RED}None of the keys under $KEYFILE were accepted by $T.${OFF}"; [ -n "$LASTERR" ] && echo "ssh said: $LASTERR"
+      SUMMARY+="$T | NOT CHECKED (no key accepted)"$'\n'; continue
+    fi
+    echo "Key accepted: $CHOSEN"
+    KA=(); while IFS= read -r a; do KA+=("$a"); done < <(keyargs "$CHOSEN"); SSHOPT+=(-o IdentitiesOnly=yes "${KA[@]}")
+  fi
+  SCPOPT=("${SSHOPT[@]}"); [ $SCPLEGACY = 1 ] && SCPOPT+=(-O)
+
+  if ! scp "${SCPOPT[@]}" "$TMPD/c4diag-check.sh" "$USER_NAME@$T:/tmp/c4diag-check.sh"; then
     echo "${RED}Could not copy the script to $T (check the IP, network and SSH access).${OFF}"
     SUMMARY+="$T | NOT CHECKED (copy failed)"$'\n'; continue
   fi
@@ -131,13 +159,13 @@ for T in "${LIST[@]}"; do
   fi
   if [ $DO = 1 ]; then
     echo "${CYN}Collecting evidence from $T ...${OFF}"
-    if ! scp -q "${SCPOPT[@]}" "$TMPD/c4diag-collect.sh" "$USER_NAME@$T:/tmp/c4diag-collect.sh"; then
+    if ! scp "${SCPOPT[@]}" "$TMPD/c4diag-collect.sh" "$USER_NAME@$T:/tmp/c4diag-collect.sh"; then
       echo "${RED}Could not copy the collect script to $T. No evidence collected.${OFF}"
       SUMMARY+="$T | $RESULT | $REPORT"$'\n'; continue
     fi
     OUT="$(ssh "${SSHOPT[@]}" "$USER_NAME@$T" "sh /tmp/c4diag-collect.sh; rm -f /tmp/c4diag-collect.sh" 2>&1)"
     ARCH="$(echo "$OUT" | grep '^ARCHIVE=' | tail -1 | cut -d= -f2-)"
-    if [ -n "$ARCH" ] && scp -q "${SCPOPT[@]}" "$USER_NAME@$T:$ARCH" "$OUTDIR/"; then
+    if [ -n "$ARCH" ] && scp "${SCPOPT[@]}" "$USER_NAME@$T:$ARCH" "$OUTDIR/"; then
       LOCAL="$OUTDIR/$(basename "$ARCH")"
       ssh "${SSHOPT[@]}" "$USER_NAME@$T" "rm -f $ARCH" >/dev/null 2>&1
       { echo "$OUT" | grep -E '^[0-9a-f]{64} ' | sed 's/^/Controller-side hash: /'
