@@ -2,6 +2,10 @@
 
 All times CST.
 
+## 1.15 — Nov 27, 2026, 10:50 AM
+- Check 1.9: a root key ending `updatesupport@patch.control4.com` is labelled as Control4's update key. It was seen on a never-infected EA-1 after an OS update (thanks happy-daisy); not confirmed by Control4.
+- Guide rev 2.4: explains which authorized_keys entries are expected.
+
 ## 1.14 — Nov 27, 2026, 10:45 AM
 From happy-daisy's Windows run (issue #1), on an EA-1 that was never infected:
 - Windows launcher 1.7: Windows OpenSSH refused the Jailbreak tool's keys with "UNPROTECTED PRIVATE KEY FILE" because the Keys folder (on a D: drive) let "Authenticated Users" read them. The launcher now uses private copies of the keys in a temp folder that only you can read, and deletes them at the end. Your original key files are not changed.

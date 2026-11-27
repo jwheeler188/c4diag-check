@@ -1,12 +1,12 @@
 #!/bin/sh
 # c4diag-check.sh  -  READ-ONLY check for the c4diagd / c4hijack kit on a Control4 controller
-# Analyst: James Wheeler   Rev 1.8 (skips package files when looking for logs)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.9 (labels Control4's update key in authorized_keys)   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-check.sh | tee /tmp/c4diag-check.txt
 # This script only reads. It does not stop, delete or change anything.
 # If it reports ARMED, stop and escalate to Control4. Do not reboot or kill processes.
 
-echo "=== c4diag check rev 1.8  $(date)  host: $(hostname) ==="
+echo "=== c4diag check rev 1.9  $(date)  host: $(hostname) ==="
 FOUND=0; ARMED=0; CLEANED=0; TIMEHINT=0
 
 say() { printf '%-48s %s\n' "$1" "$2"; }
@@ -138,7 +138,8 @@ done
 for K in "$ROOTHOME/.ssh/authorized_keys" /root/.ssh/authorized_keys /home/root/.ssh/authorized_keys; do
   [ -f "$K" ] || continue
   case " $SEENK " in *" $K "*) continue;; esac; SEENK="$SEENK $K"
-  echo "--- $K (review for unknown keys; modified $(fmt "$(mtime "$K")")) ---"; cat "$K"
+  echo "--- $K (review for unknown keys; modified $(fmt "$(mtime "$K")")) ---"
+  sed 's/updatesupport@patch\.control4\.com$/&   (labelled as Control4'"'"'s update key; seen on clean units)/' "$K"
 done
 [ -z "$SEENK" ] && echo "--- no root authorized_keys file found (home: $ROOTHOME) ---"
 
