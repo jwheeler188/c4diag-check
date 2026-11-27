@@ -4,7 +4,7 @@
   and saves each report to a text file.
 
 .DESCRIPTION
-  Analyst: James Wheeler   Rev 1.8   November 27, 2026
+  Analyst: James Wheeler   Rev 1.9   November 27, 2026
   HC-800 / newer OpenSSH fixes contributed by CK (Control4 DIY Discord).
   Requires the OpenSSH client built into Windows 10/11 (ssh and scp) and root SSH
   access to the controller. c4diag-check.sh must be in the same folder as this file.
@@ -62,7 +62,7 @@ if ($Host.Name -eq "Windows PowerShell ISE Host") {
 # Interactive menu when no controller IP was given
 if (-not $Ip -or $Ip.Count -eq 0) {
     Write-Host ""
-    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.8)" -ForegroundColor Cyan
+    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.9)" -ForegroundColor Cyan
     Write-Host "Everything here is read-only on the controller. You need root SSH access."
     Write-Host ""
     $entry = Read-Host "Controller IP address(es), separated by commas"
@@ -140,7 +140,8 @@ if ($keyGroups.Count -gt 0) {
         foreach ($kf in $grp) {
             $dest = Join-Path $sub (Split-Path $kf -Leaf)
             Copy-Item -LiteralPath $kf -Destination $dest -Force
-            & icacls $dest /inheritance:r /grant:r "*${sid}:(R)" 2>&1 | Out-Null
+            # Full control for you only: OpenSSH accepts it, and it lets the copy be deleted afterwards
+            & icacls $dest /inheritance:r /grant:r "*${sid}:(F)" 2>&1 | Out-Null
             $newGrp += $dest
         }
         $copied += ,$newGrp
@@ -151,6 +152,7 @@ if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out
 
 if ($Collect -ne "None" -and -not (Test-Path $CollectScript)) {
     Write-Host "Cannot find $CollectScript. Put c4diag-collect.sh in the same folder as this file." -ForegroundColor Red
+    if ($keyTmp) { & icacls $keyTmp /reset /T /Q 2>&1 | Out-Null; Remove-Item -LiteralPath $keyTmp -Recurse -Force -ErrorAction SilentlyContinue }
     exit 1
 }
 
@@ -203,7 +205,7 @@ foreach ($target in $Ip) {
     if ($probe -match "Permission denied \(([^)]*)\)") {
         $methods = $Matches[1]
         $authLine = "Running sshd login methods (tested from this PC): $methods"
-        if ($methods -match "password") { $authLine += "   <-- PASSWORD LOGIN IS LIVE (attacker enabled this; restart sshd after fixing sshd_config)" }
+        if ($methods -match "password") { $authLine += "   <-- PASSWORD LOGIN IS LIVE (the attacker turned this on; older Jailbreak tool versions do too. Set PasswordAuthentication no and restart sshd unless you rely on it)" }
         elseif ($methods -match "keyboard-interactive") { $authLine += "   <-- keyboard-interactive offered (can allow password login; check PasswordAuthentication / KbdInteractiveAuthentication)" }
     }
     Write-Host $authLine -ForegroundColor $(if ($authLine -match "<--") { "Yellow" } else { "Gray" })
@@ -325,7 +327,11 @@ foreach ($target in $Ip) {
 }
 
 Remove-Item $lfCopy -ErrorAction SilentlyContinue
-if ($keyTmp) { Remove-Item -LiteralPath $keyTmp -Recurse -Force -ErrorAction SilentlyContinue }
+if ($keyTmp) {
+    & icacls $keyTmp /reset /T /Q 2>&1 | Out-Null
+    Remove-Item -LiteralPath $keyTmp -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $keyTmp) { Write-Host "Note: could not delete the temporary key copies in $keyTmp. You can delete that folder yourself." -ForegroundColor Yellow }
+}
 if ($lfCollect) { Remove-Item $lfCollect -ErrorAction SilentlyContinue }
 Write-Host ""
 Write-Host "=== Summary ===" -ForegroundColor Cyan

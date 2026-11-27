@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # c4diag-run.sh  -  Mac / Linux launcher for the c4diagd check and evidence collection
-# Analyst: James Wheeler   Rev 1.7  (recognises the LIKELY PAST INFECTION result)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.8  (clearer password-login warning)   November 25, 2026
 #
 # Keep c4diag-check.sh and c4diag-collect.sh in the same folder as this file.
 # Needs root SSH access to the controller.
@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$IPS" ]; then
-  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.7)${OFF}"
+  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.8)${OFF}"
   echo "Everything here is read-only on the controller. You need root SSH access."; echo
   read -r -p "Controller IP address(es), separated by commas: " IPS
   [ -z "$IPS" ] && { echo "${RED}No IP entered.${OFF}"; exit 1; }
@@ -101,7 +101,7 @@ for T in "${LIST[@]}"; do
   PROBE="$(ssh -o PreferredAuthentications=none -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "$USER_NAME@$T" exit 2>&1)"
   METHODS="$(echo "$PROBE" | sed -n 's/.*Permission denied (\([^)]*\)).*/\1/p' | head -1)"
   AUTHLINE="Running sshd login methods (tested from this computer): ${METHODS:-unknown}"
-  if echo "$METHODS" | grep -q password; then AUTHLINE="$AUTHLINE   <-- PASSWORD LOGIN IS LIVE (attacker enabled this; restart sshd after fixing sshd_config)"
+  if echo "$METHODS" | grep -q password; then AUTHLINE="$AUTHLINE   <-- PASSWORD LOGIN IS LIVE (the attacker turned this on; older Jailbreak tool versions do too. Set PasswordAuthentication no and restart sshd unless you rely on it)"
   elif echo "$METHODS" | grep -q keyboard-interactive; then AUTHLINE="$AUTHLINE   <-- keyboard-interactive offered (can allow password login; check PasswordAuthentication / KbdInteractiveAuthentication)"; fi
   echo "$AUTHLINE"
   # Jailbroken controllers usually accept key login only. Without a key every login would

@@ -2,6 +2,11 @@
 
 All times CST.
 
+## 1.17 — Nov 27, 2026, 4:30 PM
+- Windows launcher 1.9: the temporary key copies are now always deleted at the end (happy-daisy found they stayed behind). The copies get full control for you only, which OpenSSH still accepts, and the folder's permissions are reset before deleting. Also cleaned up on an early exit.
+- Both launchers: "PASSWORD LOGIN IS LIVE" no longer says only the attacker causes it. Older Jailbreak tool versions also turn password login on.
+- Reminder: key files on a NAS or second drive need launcher 1.7 or later (Griznuff was on 1.6).
+
 ## 1.16 — Nov 27, 2026, 2:15 PM
 - Check 2.0: a masked c4diagd.service **on its own** now gives **LIKELY PAST INFECTION (masked service only)** instead of PREVIOUSLY INFECTED. It isn't yet known whether Control4's cleanup masked the service on every controller, infected or not. Masked plus a Nov 19–24 date on /usr/local or sshd_config still gives PREVIOUSLY INFECTED. Launchers (Windows 1.8, Mac/Linux 1.7) recognise the new result.
 - Incident report rev 2.3: first capture of the kit running, from a Dutch dealer's CORE-5 logs (section 6.14).
