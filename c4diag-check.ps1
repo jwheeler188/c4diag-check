@@ -4,7 +4,7 @@
   and saves each report to a text file.
 
 .DESCRIPTION
-  Analyst: James Wheeler   Rev 1.6   November 25, 2026
+  Analyst: James Wheeler   Rev 1.7   November 27, 2026
   HC-800 / newer OpenSSH fixes contributed by CK (Control4 DIY Discord).
   Requires the OpenSSH client built into Windows 10/11 (ssh and scp) and root SSH
   access to the controller. c4diag-check.sh must be in the same folder as this file.
@@ -62,7 +62,7 @@ if ($Host.Name -eq "Windows PowerShell ISE Host") {
 # Interactive menu when no controller IP was given
 if (-not $Ip -or $Ip.Count -eq 0) {
     Write-Host ""
-    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.6)" -ForegroundColor Cyan
+    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.7)" -ForegroundColor Cyan
     Write-Host "Everything here is read-only on the controller. You need root SSH access."
     Write-Host ""
     $entry = Read-Host "Controller IP address(es), separated by commas"
@@ -123,6 +123,29 @@ if ($IdentityFile) {
     } else {
         $keyGroups += ,@((Resolve-Path $IdentityFile).Path)
     }
+}
+# Windows OpenSSH refuses private keys that other users can read ("UNPROTECTED PRIVATE KEY FILE",
+# e.g. keys on a D: drive that inherit "Authenticated Users"). Instead of changing the user's
+# files, use private copies in a temp folder readable only by the current user; deleted at the end.
+$keyTmp = $null
+if ($keyGroups.Count -gt 0) {
+    $keyTmp = Join-Path $env:TEMP ("c4diag-keys-" + $PID)
+    New-Item -ItemType Directory -Path $keyTmp -Force | Out-Null
+    $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $copied = @()
+    foreach ($grp in $keyGroups) {
+        $sub = Join-Path $keyTmp (Split-Path (Split-Path $grp[0] -Parent) -Leaf)
+        New-Item -ItemType Directory -Path $sub -Force | Out-Null
+        $newGrp = @()
+        foreach ($kf in $grp) {
+            $dest = Join-Path $sub (Split-Path $kf -Leaf)
+            Copy-Item -LiteralPath $kf -Destination $dest -Force
+            & icacls $dest /inheritance:r /grant:r "*${sid}:(R)" 2>&1 | Out-Null
+            $newGrp += $dest
+        }
+        $copied += ,$newGrp
+    }
+    $keyGroups = $copied
 }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 
@@ -217,7 +240,7 @@ foreach ($target in $Ip) {
             $summary += [pscustomobject]@{ Controller = $target; Result = "NOT CHECKED (no key accepted)"; Report = ""; Evidence = "" }
             continue
         }
-        Write-Host ("Key accepted: {0}" -f (Split-Path $chosen[0] -Parent)) -ForegroundColor Gray
+        Write-Host ("Key accepted: {0}" -f (Split-Path (Split-Path $chosen[0] -Parent) -Leaf)) -ForegroundColor Gray
         $sshOpts += @("-o", "IdentitiesOnly=yes")
         foreach ($kf in $chosen) { $sshOpts += @("-i", $kf) }
     }
@@ -301,6 +324,7 @@ foreach ($target in $Ip) {
 }
 
 Remove-Item $lfCopy -ErrorAction SilentlyContinue
+if ($keyTmp) { Remove-Item -LiteralPath $keyTmp -Recurse -Force -ErrorAction SilentlyContinue }
 if ($lfCollect) { Remove-Item $lfCollect -ErrorAction SilentlyContinue }
 Write-Host ""
 Write-Host "=== Summary ===" -ForegroundColor Cyan

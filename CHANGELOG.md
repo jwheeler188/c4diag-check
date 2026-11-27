@@ -2,6 +2,11 @@
 
 All times CST.
 
+## 1.14 — Nov 27, 2026, 10:45 AM
+From happy-daisy's Windows run (issue #1), on an EA-1 that was never infected:
+- Windows launcher 1.7: Windows OpenSSH refused the Jailbreak tool's keys with "UNPROTECTED PRIVATE KEY FILE" because the Keys folder (on a D: drive) let "Authenticated Users" read them. The launcher now uses private copies of the keys in a temp folder that only you can read, and deletes them at the end. Your original key files are not changed.
+- Check 1.8 / collector 1.7: the log search no longer picks up package files whose names start with "syslog" (e.g. /mnt/internal/packages/syslog-ng_*.deb).
+
 ## Docs — Nov 26, 2026, 11:30 PM
 - Incident report rev 2.2: Thanksgiving updates (6.13): five confirmed past infections in a table (first OS 4 / X4 unit, first outside the US), staggered install times vs a single cleanup push, sshd_config rewritten at install, hardening suggestion, why logs rarely show the attack after restarts, unconfirmed local-account token theory.
 

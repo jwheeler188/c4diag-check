@@ -1,12 +1,12 @@
 #!/bin/sh
 # c4diag-check.sh  -  READ-ONLY check for the c4diagd / c4hijack kit on a Control4 controller
-# Analyst: James Wheeler   Rev 1.7 (says when logs start after the attack window)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.8 (skips package files when looking for logs)   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-check.sh | tee /tmp/c4diag-check.txt
 # This script only reads. It does not stop, delete or change anything.
 # If it reports ARMED, stop and escalate to Control4. Do not reboot or kill processes.
 
-echo "=== c4diag check rev 1.7  $(date)  host: $(hostname) ==="
+echo "=== c4diag check rev 1.8  $(date)  host: $(hostname) ==="
 FOUND=0; ARMED=0; CLEANED=0; TIMEHINT=0
 
 say() { printf '%-48s %s\n' "$1" "$2"; }
@@ -19,7 +19,7 @@ mtime() { stat -c %Y "$1" 2>/dev/null || date -r "$1" +%s 2>/dev/null; }
 fmt() { date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "$1"; }
 # Log files: some OS versions keep them under /var/log/debug/
 # Log files: /var/log (OS 3.4.x uses /var/log/debug/), plus persistent logs under /mnt/internal
-LOGFILES=$(find /var/log/ /mnt/internal/ -maxdepth 4 -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) 2>/dev/null)
+LOGFILES=$(find /var/log/ /mnt/internal/ -maxdepth 4 -type f \( -name 'daemon.log*' -o -name 'messages*' -o -name 'syslog*' -o -name 'auth.log*' -o -name 'secure*' \) ! -name '*.deb' ! -name '*.ipk' ! -name '*.rpm' 2>/dev/null)
 # Some units (e.g. CORE series) keep logs only in the systemd journal
 HAVEJOURNAL=0; command -v journalctl >/dev/null 2>&1 && journalctl -q --no-pager -n 1 >/dev/null 2>&1 && HAVEJOURNAL=1
 readlogs() { for f in $LOGFILES; do case "$f" in *.gz) zcat "$f" 2>/dev/null ;; *) cat "$f" 2>/dev/null ;; esac; done
