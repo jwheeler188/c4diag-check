@@ -1,12 +1,12 @@
 #!/bin/sh
 # c4diag-check.sh  -  READ-ONLY check for the c4diagd / c4hijack kit on a Control4 controller
-# Analyst: James Wheeler   Rev 2.0 (masked service alone = LIKELY, not confirmed)   November 25, 2026
+# Analyst: James Wheeler   Rev 2.1 (masked service is not evidence on its own; cleanup-time evidence added)   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-check.sh | tee /tmp/c4diag-check.txt
 # This script only reads. It does not stop, delete or change anything.
 # If it reports ARMED, stop and escalate to Control4. Do not reboot or kill processes.
 
-echo "=== c4diag check rev 2.0  $(date)  host: $(hostname) ==="
+echo "=== c4diag check rev 2.1  $(date)  host: $(hostname) ==="
 FOUND=0; ARMED=0; CLEANED=0; TIMEHINT=0; MASKED=0
 
 say() { printf '%-48s %s\n' "$1" "$2"; }
@@ -28,17 +28,18 @@ readlogs() { for f in $LOGFILES; do case "$f" in *.gz) zcat "$f" 2>/dev/null ;; 
 ROOTHOME=$(awk -F: '$1=="root"{print $6}' /etc/passwd 2>/dev/null); [ -z "$ROOTHOME" ] && ROOTHOME=/root
 
 # 1. Kit files
-# A unit file that is a link to /dev/null means c4diagd was MASKED (neutralised by an owner
-# or Control4's cleanup). It is not yet known whether the cleanup masked it on EVERY
-# controller, infected or not, so on its own this gives "LIKELY", not "PREVIOUSLY INFECTED".
+# A unit file that is a link to /dev/null means c4diagd is MASKED. Community reports say
+# Control4's cleanup masked it on every controller as protection against reinstallation
+# (writes through the link go to /dev/null and systemd refuses to start a masked unit),
+# so on its own this is NOT evidence of infection. Pending confirmation on a never-exposed unit.
 for f in /usr/local/bin/c4diagd /usr/local/bin/c4diagd.cfg.json \
          /etc/systemd/system/c4diagd.service \
          /etc/systemd/system/multi-user.target.wants/c4diagd.service \
          /var/log/c4diagd.log /tmp/c4diag-setup; do
   if [ -L "$f" ] && [ "$(readlink "$f")" = "/dev/null" ]; then
-    say "$f" "MASKED (link to /dev/null) - neutralised; see RESULT"; MASKED=1
+    say "$f" "MASKED (link to /dev/null) - Control4's protective mask; not evidence on its own"; MASKED=1
   elif [ -L "$f" ] && [ ! -e "$f" ]; then
-    say "$f" "broken link - leftover; see RESULT"; MASKED=1
+    say "$f" "broken link - leftover from removal; review"; MASKED=1
   elif [ -e "$f" ]; then
     say "$f" "PRESENT  <-- infection"; FOUND=1
   else
@@ -189,6 +190,11 @@ for D in /usr/local /usr/local/bin /opt /opt/.c4diag; do
   if [ "$T" -ge "$WIN_START" ] && [ "$T" -lt "$WIN_END" ]; then
     say "$D modified" "$(fmt $T)  <-- inside Nov 19-24 window"
     case "$D" in /usr/local|/usr/local/bin) TIMEHINT=1 ;; esac
+    # Control4's cleanup deleted the kit from /usr/local/bin around 06:30 UTC on Nov 23. A change
+    # there in that window means files were removed, which only happens on infected units.
+    if [ "$D" = /usr/local/bin ] && [ "$T" -ge 1795410000 ] && [ "$T" -lt 1795420800 ]; then
+      echo "  (changed during Control4's cleanup on Nov 23, 05:00-08:00 UTC: files were removed here)"; CLEANED=1
+    fi
   else say "$D modified" "$(fmt $T)"; fi
 done
 
@@ -232,10 +238,6 @@ elif [ $FOUND -eq 1 ]; then
   echo "INFECTED (staged). Copy evidence off, then remove per the guide or request Control4 cleanup."
 elif [ $CLEANED -eq 1 ]; then
   echo "PREVIOUSLY INFECTED, NOW CLEAN. Kit removed or masked, but traces show it was here (logs, relay logins or directory times above). Review access and keep the logs."
-elif [ $MASKED -eq 1 ] && [ $TIMEHINT -eq 1 ]; then
-  echo "PREVIOUSLY INFECTED, NOW CLEAN. The c4diagd service is masked AND /usr/local or sshd_config changed during Nov 19-24, the pattern on every confirmed unit. Review access and keep the logs."
-elif [ $MASKED -eq 1 ]; then
-  echo "LIKELY PAST INFECTION (masked service only). The c4diagd service is masked, but nothing else here confirms the kit was installed (logs may not reach back to Nov 22). It is not yet known whether Control4's cleanup masked this service on every controller, infected or not. Check older logs, firewall logs or a pre-Nov 22 snapshot to confirm."
 elif [ $TIMEHINT -eq 1 ]; then
   echo "POSSIBLE PAST INFECTION (timestamps only). /usr/local or sshd_config changed during Nov 19-24, matching kit install/cleanup times, but no log evidence. An OS update that week can also cause this. Confirm with firewall logs or a controller snapshot."
 elif [ "${LOGLATE:-0}" = 1 ] && [ -z "$LOGFILES" ]; then

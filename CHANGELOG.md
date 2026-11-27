@@ -2,6 +2,11 @@
 
 All times CST.
 
+## 1.18 — Nov 27, 2026, 4:45 PM
+- Check 2.1: a masked c4diagd.service is **no longer treated as evidence**. Community reports say Control4's cleanup masked it on every controller as protection against reinstallation, and Netherlands data showed masked units with no other trace. It is still listed, as "Control4's protective mask". (Pending confirmation on a never-exposed unit.)
+- Check 2.1: new strong evidence: /usr/local/bin changed during Control4's cleanup (Nov 23, 05:00–08:00 UTC) means the cleanup removed files there, which only happens on infected units. Every confirmed unit shows 06:30.
+- **If an earlier check said PREVIOUSLY INFECTED or LIKELY PAST INFECTION only because of the masked service, re-run it.**
+
 ## 1.17 — Nov 27, 2026, 4:30 PM
 - Windows launcher 1.9: the temporary key copies are now always deleted at the end (happy-daisy found they stayed behind). The copies get full control for you only, which OpenSSH still accepts, and the folder's permissions are reset before deleting. Also cleaned up on an early exit.
 - Both launchers: "PASSWORD LOGIN IS LIVE" no longer says only the attacker causes it. Older Jailbreak tool versions also turn password login on.
