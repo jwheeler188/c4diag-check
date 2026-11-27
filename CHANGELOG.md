@@ -2,6 +2,9 @@
 
 All times CST.
 
+## Docs — Nov 26, 2026, 11:30 PM
+- Incident report rev 2.2: Thanksgiving updates (6.13): five confirmed past infections in a table (first OS 4 / X4 unit, first outside the US), staggered install times vs a single cleanup push, sshd_config rewritten at install, hardening suggestion, why logs rarely show the attack after restarts, unconfirmed local-account token theory.
+
 ## 1.13 — Nov 26, 2026, 11:20 PM
 - Check 1.7: if the systemd journal starts after the attack window (usually because the controller restarted, which wipes a RAM-only journal), the report now says so, and a clean result reads **NO INDICATORS FOUND, BUT NO LOGS COVER THE ATTACK WINDOW** instead of a plain NO INDICATORS FOUND. Found from Zeyphod's CORE 5, whose journal started Nov 26.
 - Collector 1.6: in the journal login list, logins from the PC running the collection are marked "(this PC)", so your own toolkit runs aren't mistaken for unknown access.
