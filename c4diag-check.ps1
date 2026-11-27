@@ -4,7 +4,7 @@
   and saves each report to a text file.
 
 .DESCRIPTION
-  Analyst: James Wheeler   Rev 1.7   November 27, 2026
+  Analyst: James Wheeler   Rev 1.8   November 27, 2026
   HC-800 / newer OpenSSH fixes contributed by CK (Control4 DIY Discord).
   Requires the OpenSSH client built into Windows 10/11 (ssh and scp) and root SSH
   access to the controller. c4diag-check.sh must be in the same folder as this file.
@@ -62,7 +62,7 @@ if ($Host.Name -eq "Windows PowerShell ISE Host") {
 # Interactive menu when no controller IP was given
 if (-not $Ip -or $Ip.Count -eq 0) {
     Write-Host ""
-    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.7)" -ForegroundColor Cyan
+    Write-Host "Control4 c4diagd check  (James Wheeler, rev 1.8)" -ForegroundColor Cyan
     Write-Host "Everything here is read-only on the controller. You need root SSH access."
     Write-Host ""
     $entry = Read-Host "Controller IP address(es), separated by commas"
@@ -272,6 +272,7 @@ foreach ($target in $Ip) {
     if     ($joined -match "ARMED / LOCKED INDICATORS FOUND")  { $result = "ARMED - do not reboot, escalate to Control4"; $color = "Red" }
     elseif ($joined -match "INFECTED \(staged\)")              { $result = "INFECTED (staged)"; $color = "Red" }
     elseif ($joined -match "PREVIOUSLY INFECTED, NOW CLEAN")   { $result = "PREVIOUSLY INFECTED, NOW CLEAN"; $color = "Yellow" }
+    elseif ($joined -match "LIKELY PAST INFECTION")            { $result = "LIKELY PAST INFECTION (masked service only)"; $color = "Yellow" }
     elseif ($joined -match "POSSIBLE PAST INFECTION")          { $result = "POSSIBLE PAST INFECTION (timestamps only)"; $color = "Yellow" }
     elseif ($joined -match "NO INDICATORS FOUND")              { $result = "NO INDICATORS FOUND"; $color = "Green" }
 

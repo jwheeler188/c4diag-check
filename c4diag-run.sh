@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # c4diag-run.sh  -  Mac / Linux launcher for the c4diagd check and evidence collection
-# Analyst: James Wheeler   Rev 1.6  (clearer message when no saved key matches a controller)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.7  (recognises the LIKELY PAST INFECTION result)   November 25, 2026
 #
 # Keep c4diag-check.sh and c4diag-collect.sh in the same folder as this file.
 # Needs root SSH access to the controller.
@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$IPS" ]; then
-  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.6)${OFF}"
+  echo; echo "${CYN}Control4 c4diagd check  (James Wheeler, rev 1.7)${OFF}"
   echo "Everything here is read-only on the controller. You need root SSH access."; echo
   read -r -p "Controller IP address(es), separated by commas: " IPS
   [ -z "$IPS" ] && { echo "${RED}No IP entered.${OFF}"; exit 1; }
@@ -148,6 +148,7 @@ for T in "${LIST[@]}"; do
   if   grep -q "ARMED / LOCKED INDICATORS FOUND" "$REPORT"; then RESULT="ARMED - do not reboot, escalate to Control4"; COL="$RED"
   elif grep -q "INFECTED (staged)" "$REPORT"; then RESULT="INFECTED (staged)"; COL="$RED"
   elif grep -q "PREVIOUSLY INFECTED, NOW CLEAN" "$REPORT"; then RESULT="PREVIOUSLY INFECTED, NOW CLEAN"; COL="$YEL"
+  elif grep -q "LIKELY PAST INFECTION" "$REPORT"; then RESULT="LIKELY PAST INFECTION (masked service only)"; COL="$YEL"
   elif grep -q "POSSIBLE PAST INFECTION" "$REPORT"; then RESULT="POSSIBLE PAST INFECTION (timestamps only)"; COL="$YEL"
   elif grep -q "NO INDICATORS FOUND" "$REPORT"; then RESULT="NO INDICATORS FOUND"; COL="$GRN"; fi
   echo; echo "Result for $T: ${COL}${RESULT}${OFF}"; echo "Saved to $REPORT"
