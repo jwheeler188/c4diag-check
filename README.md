@@ -42,6 +42,8 @@ Once a few native runs confirm it works, this notice will be removed.
 
 ## Quick start
 
+**First, download the files properly:** click the green **Code** button at the top of this page → **Download ZIP**, then unzip it. Don't right-click a file link and choose "Save link as": that saves GitHub's web page, not the script, and PowerShell fails with errors about `<script type="importmap">`.
+
 **Windows** (PowerShell, in the folder with the scripts):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\c4diag-check.ps1

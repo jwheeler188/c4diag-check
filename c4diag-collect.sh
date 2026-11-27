@@ -1,6 +1,6 @@
 #!/bin/sh
 # c4diag-collect.sh  -  gather c4diagd / c4hijack evidence into one archive for Control4
-# Analyst: James Wheeler   Rev 1.5   November 26, 2026
+# Analyst: James Wheeler   Rev 1.6   November 26, 2026
 #
 # Run as root over SSH:   sh c4diag-collect.sh
 # Only READS from the system. It writes a working folder and a .tar.gz under /tmp
@@ -82,7 +82,10 @@ run dpkg-patch sh -c 'dpkg -l 2>/dev/null | grep -i patch'
 run systemctl-c4diagd sh -c 'systemctl status c4diagd 2>&1; systemctl list-unit-files 2>/dev/null | grep -i masked'
 run sysman sh -c 'sysman list 2>/dev/null || ls /etc/sysman.d'
 run c4diag-log-lines sh -c 'for f in '"$LOGFILES"'; do case "$f" in *.gz) zcat "$f";; *) cat "$f";; esac; done 2>/dev/null | grep -i c4diag'
-run journal-c4diag sh -c 'command -v journalctl >/dev/null && journalctl -q --no-pager -o short-iso 2>/dev/null | grep -iE "c4diag|Accepted (password|publickey|keyboard-interactive) for root"'
+# Mark logins from the PC running this collection, so the user's own runs aren't mistaken for unknown access
+ME=$(echo "${SSH_CLIENT:-}" | cut -d' ' -f1)
+export ME
+run journal-c4diag sh -c 'command -v journalctl >/dev/null && journalctl -q --no-pager -o short-iso 2>/dev/null | grep -iE "c4diag|Accepted (password|publickey|keyboard-interactive) for root" | if [ -n "$ME" ]; then sed "/ from $ME port /s/\$/   (this PC)/"; else cat; fi'
 run journal-range sh -c 'command -v journalctl >/dev/null && { journalctl -q --no-pager -o short-iso 2>/dev/null | head -1; journalctl -q --no-pager -o short-iso 2>/dev/null | tail -1; }'
 run relay-password-logins sh -c 'for f in '"$LOGFILES"'; do case "$f" in *.gz) zcat "$f";; *) cat "$f";; esac; done 2>/dev/null | grep -iE "Accepted (password|publickey) for root from 127\.0\.0\.1"'
 run dir-times sh -c 'ls -ld --full-time /usr/local /usr/local/bin /opt /opt/.c4diag /etc/ssh/sshd_config /etc/inittab 2>/dev/null || ls -ld /usr/local /usr/local/bin /opt /etc/ssh/sshd_config /etc/inittab'
@@ -98,7 +101,7 @@ run api-cert sh -c 'for c in /opt/control4/etc/ssl/certs/api.pem /etc/openvpn/ap
   echo "c4diagd evidence archive"
   echo "Host:      $H"
   echo "Collected: $TS (UTC)"
-  echo "Collector: c4diag-collect.sh rev 1.5"
+  echo "Collector: c4diag-collect.sh rev 1.6"
   echo "WARNING:   files/usr/local/bin/c4diagd (if present) is live malware. Do not run it."
   echo
   echo "SHA-256 of collected files:"

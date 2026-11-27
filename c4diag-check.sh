@@ -1,12 +1,12 @@
 #!/bin/sh
 # c4diag-check.sh  -  READ-ONLY check for the c4diagd / c4hijack kit on a Control4 controller
-# Analyst: James Wheeler   Rev 1.6 (log symlink fix and false alarms from muroglio's 4-controller run)   November 25, 2026
+# Analyst: James Wheeler   Rev 1.7 (says when logs start after the attack window)   November 25, 2026
 #
 # Run as root over SSH:   sh c4diag-check.sh | tee /tmp/c4diag-check.txt
 # This script only reads. It does not stop, delete or change anything.
 # If it reports ARMED, stop and escalate to Control4. Do not reboot or kill processes.
 
-echo "=== c4diag check rev 1.6  $(date)  host: $(hostname) ==="
+echo "=== c4diag check rev 1.7  $(date)  host: $(hostname) ==="
 FOUND=0; ARMED=0; CLEANED=0; TIMEHINT=0
 
 say() { printf '%-48s %s\n' "$1" "$2"; }
@@ -147,7 +147,18 @@ done
 # cleanup script, which ran on every controller.
 if [ -z "$LOGFILES" ]; then say "Log files (/var/log, /mnt/internal)" "none"; else say "Log files (/var/log, /mnt/internal)" "$(echo $LOGFILES | wc -w)"; fi
 JSTART=""; [ $HAVEJOURNAL = 1 ] && JSTART=$(journalctl -q --no-pager -o short-iso 2>/dev/null | head -1 | cut -d' ' -f1)
-if [ -n "$JSTART" ]; then say "systemd journal" "searched (entries from $JSTART)"; else say "systemd journal" "not available or empty"; fi
+if [ -n "$JSTART" ]; then
+  say "systemd journal" "searched (entries from $JSTART)"
+  # On many units the journal is kept in RAM and starts at the last restart
+  JEPOCH=$(journalctl -q --no-pager -o short-unix 2>/dev/null | head -1 | cut -d. -f1)
+  case "$JEPOCH" in ''|*[!0-9]*) ;; *)
+    if [ "$JEPOCH" -ge "$WIN_END" ]; then
+      echo "  NOTE: the journal starts after the attack window (Nov 19-24), normally because the controller"
+      echo "  restarted since. It cannot confirm or rule out a past infection; rely on the file and folder dates."
+      LOGLATE=1
+    fi ;;
+  esac
+else say "systemd journal" "not available or empty"; fi
 LOGHITS=$(readlogs | grep -E 'c4diagd\[[0-9]+\]|\[c4diagd [0-9]|c4diagd starting|NOT ARMED' | grep -vi maintain | wc -l)
 LOGHITS=$(echo $LOGHITS)
 say "Log lines written by c4diagd" "${LOGHITS:-0}"
@@ -221,6 +232,8 @@ elif [ $CLEANED -eq 1 ]; then
   echo "PREVIOUSLY INFECTED, NOW CLEAN. Kit removed or masked, but traces show it was here (logs, relay logins or directory times above). Review access and keep the logs."
 elif [ $TIMEHINT -eq 1 ]; then
   echo "POSSIBLE PAST INFECTION (timestamps only). /usr/local or sshd_config changed during Nov 19-24, matching kit install/cleanup times, but no log evidence. An OS update that week can also cause this. Confirm with firewall logs or a controller snapshot."
+elif [ "${LOGLATE:-0}" = 1 ] && [ -z "$LOGFILES" ]; then
+  echo "NO INDICATORS FOUND, BUT NO LOGS COVER THE ATTACK WINDOW. The only logs start after Nov 24, so a past infection that Control4 cleaned up could leave no trace here apart from the file and folder dates above. Check firewall logs or a controller snapshot from before Nov 22 if you need certainty."
 else
-  echo "NO INDICATORS FOUND. (Logs only go back to the oldest log date above; also check firewall logs.)"
+  echo "NO INDICATORS FOUND. (Logs only go back to the dates shown under Log coverage / systemd journal above; also check firewall logs.)"
 fi

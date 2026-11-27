@@ -2,6 +2,11 @@
 
 All times CST.
 
+## 1.13 — Nov 26, 2026, 11:20 PM
+- Check 1.7: if the systemd journal starts after the attack window (usually because the controller restarted, which wipes a RAM-only journal), the report now says so, and a clean result reads **NO INDICATORS FOUND, BUT NO LOGS COVER THE ATTACK WINDOW** instead of a plain NO INDICATORS FOUND. Found from Zeyphod's CORE 5, whose journal started Nov 26.
+- Collector 1.6: in the journal login list, logins from the PC running the collection are marked "(this PC)", so your own toolkit runs aren't mistaken for unknown access.
+- README: how to download the files (Code → Download ZIP), after a run failed on a saved GitHub web page (issue #1).
+
 ## 1.12 — Nov 26, 2026, 1:50 PM
 From muroglio's re-run on 4 controllers (thanks!):
 - Check 1.6 and collector 1.5: **logs were never read on these units.** /var/log is a symlink to /var/volatile/log, and `find /var/log` doesn't follow it, so "Log files: none" and the c4diagd / 127.0.0.1 login counts were 0 without reading anything. Now uses `find /var/log/`, which does. **Anyone who got NO INDICATORS FOUND from check 1.3–1.5 should re-run.**
