@@ -2,6 +2,9 @@
 
 All times CST.
 
+## Docs — Nov 27, 2026, 8:20 PM
+- Incident report rev 2.5: a unit where the attacker installed, tested and removed the kit themselves (6.15, from rob____'s logs), and the UART plan for the armed EA-3 (6.16).
+
 ## 1.18 — Nov 27, 2026, 4:45 PM
 - Check 2.1: a masked c4diagd.service is **no longer treated as evidence**. Community reports say Control4's cleanup masked it on every controller as protection against reinstallation, and Netherlands data showed masked units with no other trace. It is still listed, as "Control4's protective mask". (Pending confirmation on a never-exposed unit.)
 - Check 2.1: new strong evidence: /usr/local/bin changed during Control4's cleanup (Nov 23, 05:00–08:00 UTC) means the cleanup removed files there, which only happens on infected units. Every confirmed unit shows 06:30.
